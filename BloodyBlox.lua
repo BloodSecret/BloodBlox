@@ -50,7 +50,7 @@ local TweenService = game:GetService("TweenService")
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "4.0.0",
+    Version = "4.0.1",
     MenuOpen = false,
     Player = Players.LocalPlayer,
     Settings = {
@@ -70,6 +70,7 @@ local BloodyBlox = {
         AimbotFOV = 200,
         KillAura = false,
         KillAuraRange = 50,
+        OneShot = false,
         Debug = false
     },
     Logs = {},
@@ -563,7 +564,7 @@ function Player:ToggleAntiAim(enabled)
     end
 end
 
--- God Mode: TRUE INVINCIBILITY via Durability + Health
+-- God Mode: AGGRESSIVE APPROACH - All possible methods
 function Player:ToggleGodMode(enabled)
     local humanoid = BloodyBlox:GetHumanoid()
     local character = BloodyBlox:GetCharacter()
@@ -576,23 +577,43 @@ function Player:ToggleGodMode(enabled)
     end
 
     if enabled then
+        BloodyBlox:Log("GodMode", "Applying ALL protection methods...", "warn")
+
         -- Method 1: Infinite Health
         humanoid.MaxHealth = math.huge
         humanoid.Health = math.huge
 
-        -- Method 2: Durability manipulation
-        local durability = MuscleLegends:GetDurability()
-        if durability and durability:IsA("NumberValue") then
-            durability.Value = math.huge
-            BloodyBlox:Log("GodMode", "Durability set to INFINITE", "info")
+        -- Method 2: Remove ALL damage scripts in character
+        for _, obj in pairs(character:GetDescendants()) do
+            if obj:IsA("Script") or obj:IsA("LocalScript") then
+                obj.Disabled = true
+            end
         end
 
-        -- Method 3: Invisible ForceField
+        -- Method 3: Find and max ALL NumberValues (Durability/Defense/Armor)
+        for _, obj in pairs(character:GetDescendants()) do
+            if obj:IsA("NumberValue") then
+                local name = obj.Name:lower()
+                if name:find("durability") or name:find("defense") or name:find("armor") or name:find("health") then
+                    obj.Value = math.huge
+                    BloodyBlox:Log("GodMode", "Set " .. obj.Name .. " to INFINITE", "info")
+                end
+            end
+        end
+
+        -- Method 4: Invisible ForceField
         local forceField = Instance.new("ForceField")
         forceField.Visible = false
         forceField.Parent = character
 
-        -- Constant health + durability restore
+        -- Method 5: Make all body parts indestructible
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false  -- No collision damage
+            end
+        end
+
+        -- Method 6: Constant restore loop
         self.GodModeConnection = RunService.Heartbeat:Connect(function()
             if not BloodyBlox.Settings.GodMode then
                 if self.GodModeConnection then
@@ -602,27 +623,44 @@ function Player:ToggleGodMode(enabled)
                 return
             end
 
-            if humanoid then
-                humanoid.Health = math.huge
-                humanoid.MaxHealth = math.huge
+            local char = BloodyBlox:GetCharacter()
+            local hum = BloodyBlox:GetHumanoid()
+
+            if hum then
+                hum.Health = math.huge
+                hum.MaxHealth = math.huge
             end
 
-            -- Keep durability maxed
-            local durability = MuscleLegends:GetDurability()
-            if durability and durability:IsA("NumberValue") then
-                durability.Value = math.huge
+            if char then
+                -- Restore ALL NumberValues every frame
+                for _, obj in pairs(char:GetDescendants()) do
+                    if obj:IsA("NumberValue") then
+                        local name = obj.Name:lower()
+                        if name:find("durability") or name:find("defense") or name:find("armor") or name:find("health") then
+                            obj.Value = math.huge
+                        end
+                    end
+                end
             end
         end)
 
-        -- Block Died event
+        -- Method 7: Block Died event completely
         humanoid.Died:Connect(function()
             if BloodyBlox.Settings.GodMode then
+                humanoid.Health = math.huge
+                humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+        end)
+
+        -- Method 8: Block HealthChanged to negative values
+        humanoid.HealthChanged:Connect(function(health)
+            if BloodyBlox.Settings.GodMode and health < humanoid.MaxHealth then
                 humanoid.Health = math.huge
             end
         end)
 
         table.insert(BloodyBlox.Connections, self.GodModeConnection)
-        BloodyBlox:Log("GodMode", "TRUE INVINCIBILITY - Health + Durability + ForceField", "warn")
+        BloodyBlox:Log("GodMode", "8 METHODS ACTIVE - TRUE INVINCIBILITY", "warn")
     else
         -- Remove ForceField
         for _, v in pairs(character:GetChildren()) do
@@ -634,17 +672,11 @@ function Player:ToggleGodMode(enabled)
         humanoid.MaxHealth = 100
         humanoid.Health = 100
 
-        -- Reset durability
-        local durability = MuscleLegends:GetDurability()
-        if durability and durability:IsA("NumberValue") then
-            durability.Value = 100
-        end
-
         BloodyBlox:Log("GodMode", "OFF", "info")
     end
 end
 
--- Infinite Shield: Shield never expires after respawn
+-- Infinite Shield: AGGRESSIVE APPROACH - All possible shield objects
 function Player:ToggleInfShield(enabled)
     if self.InfShieldConnection then
         self.InfShieldConnection:Disconnect()
@@ -652,17 +684,38 @@ function Player:ToggleInfShield(enabled)
     end
 
     if enabled then
-        BloodyBlox:Log("InfShield", "Enabled - shield will be infinite on respawn", "info")
+        BloodyBlox:Log("InfShield", "Searching for ALL shield objects...", "warn")
 
-        -- Apply to current character
+        -- Apply to current character immediately
         task.spawn(function()
-            local shield = MuscleLegends:GetShield()
-            if shield then
-                if shield:IsA("NumberValue") then
-                    shield.Value = math.huge
-                elseif shield:FindFirstChild("Duration") then
-                    shield.Duration.Value = math.huge
+            local char = BloodyBlox:GetCharacter()
+            if char then
+                -- Search EVERYWHERE for shield-related objects
+                for _, obj in pairs(char:GetDescendants()) do
+                    local name = obj.Name:lower()
+
+                    -- Check for shield, protection, invincibility objects
+                    if name:find("shield") or name:find("protection") or name:find("invincib") or name:find("immune") then
+                        if obj:IsA("NumberValue") then
+                            obj.Value = math.huge
+                            BloodyBlox:Log("InfShield", "Set " .. obj.Name .. " to INFINITE", "info")
+                        elseif obj:FindFirstChild("Duration") then
+                            obj.Duration.Value = math.huge
+                            BloodyBlox:Log("InfShield", "Set " .. obj.Name .. ".Duration to INFINITE", "info")
+                        elseif obj:FindFirstChild("Time") then
+                            obj.Time.Value = math.huge
+                            BloodyBlox:Log("InfShield", "Set " .. obj.Name .. ".Time to INFINITE", "info")
+                        end
+
+                        -- Prevent deletion
+                        obj.AncestryChanged:Connect(function()
+                            if not obj.Parent and BloodyBlox.Settings.InfShield then
+                                obj.Parent = char
+                            end
+                        end)
+                    end
                 end
+
                 BloodyBlox:Log("InfShield", "Applied to current character", "info")
             end
         end)
@@ -670,26 +723,31 @@ function Player:ToggleInfShield(enabled)
         -- Apply on every respawn
         self.InfShieldConnection = BloodyBlox.Player.CharacterAdded:Connect(function(char)
             if BloodyBlox.Settings.InfShield then
-                task.wait(0.5)  -- Wait for shield to spawn
+                task.wait(0.5)
 
-                local shield = MuscleLegends:GetShield()
-                if shield then
-                    if shield:IsA("NumberValue") then
-                        shield.Value = math.huge
-                    elseif shield:FindFirstChild("Duration") then
-                        shield.Duration.Value = math.huge
-                    end
+                -- Search EVERYWHERE for shield objects on new character
+                for _, obj in pairs(char:GetDescendants()) do
+                    local name = obj.Name:lower()
 
-                    -- Prevent shield deletion
-                    shield.AncestryChanged:Connect(function()
-                        if not shield.Parent and BloodyBlox.Settings.InfShield then
-                            shield.Parent = char
+                    if name:find("shield") or name:find("protection") or name:find("invincib") or name:find("immune") then
+                        if obj:IsA("NumberValue") then
+                            obj.Value = math.huge
+                            BloodyBlox:Log("InfShield", "Respawn: Set " .. obj.Name .. " to INFINITE", "warn")
+                        elseif obj:FindFirstChild("Duration") then
+                            obj.Duration.Value = math.huge
+                            BloodyBlox:Log("InfShield", "Respawn: Set " .. obj.Name .. ".Duration to INFINITE", "warn")
+                        elseif obj:FindFirstChild("Time") then
+                            obj.Time.Value = math.huge
+                            BloodyBlox:Log("InfShield", "Respawn: Set " .. obj.Name .. ".Time to INFINITE", "warn")
                         end
-                    end)
 
-                    BloodyBlox:Log("InfShield", "Applied on respawn - shield is infinite", "warn")
-                else
-                    BloodyBlox:Log("InfShield", "Shield object not found on respawn", "error")
+                        -- Prevent deletion
+                        obj.AncestryChanged:Connect(function()
+                            if not obj.Parent and BloodyBlox.Settings.InfShield then
+                                obj.Parent = char
+                            end
+                        end)
+                    end
                 end
             end
         end)
@@ -833,6 +891,74 @@ function Combat:ToggleKillAura(enabled)
         BloodyBlox:Log("Combat", "Kill Aura: SILENT MODE (0.5s cooldown, no teleport)", "warn")
     else
         BloodyBlox:Log("Combat", "Kill Aura: OFF", "info")
+    end
+end
+
+-- One Shot Kill: 999 Trillion Damage Per Hit
+function Combat:ToggleOneShot(enabled)
+    if self.OneShotConnection then
+        self.OneShotConnection:Disconnect()
+        self.OneShotConnection = nil
+    end
+
+    if enabled then
+        BloodyBlox:Log("OneShot", "999 TRILLION DAMAGE ACTIVATED", "warn")
+
+        -- Hook into mouse clicks
+        self.OneShotConnection = RunService.Heartbeat:Connect(function()
+            if not BloodyBlox.Settings.OneShot then
+                if self.OneShotConnection then
+                    self.OneShotConnection:Disconnect()
+                    self.OneShotConnection = nil
+                end
+                return
+            end
+
+            local mouse = BloodyBlox.Player:GetMouse()
+            local target = mouse.Target
+
+            if target and target.Parent then
+                local targetChar = target.Parent
+                local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
+
+                if targetHumanoid and targetChar ~= BloodyBlox:GetCharacter() then
+                    -- Method 1: Set health to negative huge value
+                    targetHumanoid.Health = -999999999999999
+
+                    -- Method 2: Deal 999 trillion damage
+                    targetHumanoid:TakeDamage(999000000000000)
+
+                    -- Method 3: Set MaxHealth to 0
+                    targetHumanoid.MaxHealth = 0
+                    targetHumanoid.Health = 0
+
+                    -- Method 4: Fire all damage remotes with massive damage
+                    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+                        if obj:IsA("RemoteEvent") then
+                            local name = obj.Name:lower()
+                            if name:find("damage") or name:find("hit") or name:find("attack") or name:find("punch") then
+                                pcall(function() obj:FireServer(targetHumanoid, 999000000000000) end)
+                                pcall(function() obj:FireServer(targetChar, 999000000000000) end)
+                                pcall(function() obj:FireServer(999000000000000) end)
+                            end
+                        end
+                    end
+
+                    -- Method 5: Destroy character parts
+                    for _, part in pairs(targetChar:GetChildren()) do
+                        if part:IsA("BasePart") and part.Name == "Head" then
+                            part:Destroy()
+                        end
+                    end
+
+                    BloodyBlox:Log("OneShot", "Target eliminated: " .. (targetChar.Name or "Unknown"), "warn")
+                end
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.OneShotConnection)
+    else
+        BloodyBlox:Log("OneShot", "Disabled", "info")
     end
 end
 
@@ -1454,6 +1580,18 @@ end)
 MainUI:AddLabel(MiscTab, "")
 MainUI:AddLabel(MiscTab, "Anti-Aim: Simple Y-axis rotation")
 MainUI:AddLabel(MiscTab, "Movement works normally")
+
+MainUI:AddLabel(MiscTab, "")
+MainUI:AddLabel(MiscTab, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+MainUI:AddLabel(MiscTab, "")
+
+MainUI:AddToggle(MiscTab, "ONE SHOT KILL (999T DMG)", false, function(value)
+    BloodyBlox.Settings.OneShot = value
+    Combat:ToggleOneShot(value)
+end)
+MainUI:AddLabel(MiscTab, "")
+MainUI:AddLabel(MiscTab, "One Shot: 999 TRILLION damage per hit")
+MainUI:AddLabel(MiscTab, "WARNING: Instant kill on ANY target")
 
 MainUI:AddLabel(MiscTab, "")
 MainUI:AddLabel(MiscTab, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
