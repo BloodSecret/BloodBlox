@@ -1144,14 +1144,6 @@ function Combat:ToggleKillAura(enabled)
         BloodyBlox:Log("Combat", "Kill Aura: OFF", "info")
     end
 end
-        end)
-
-        table.insert(BloodyBlox.Connections, self.KillAuraConnection)
-        BloodyBlox:Log("Combat", "Kill Aura: ATTACKING ALL PLAYERS IN " .. BloodyBlox.Settings.KillAuraRange .. " STUDS", "warn")
-    else
-        BloodyBlox:Log("Combat", "Kill Aura: OFF", "info")
-    end
-end
 
 print("[BloodyBlox] Combat module loaded")
 print("[BloodyBlox] Player module loaded")
