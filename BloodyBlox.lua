@@ -1,6 +1,6 @@
 --[[
-    BloodyBlox v3.3 - Muscle Legends Exploit
-    Complete Redesign - Fixed Functions
+    BloodyBlox v4.0.0 - Muscle Legends Exploit
+    Complete Rewrite - All Functions Working
     Load: loadstring(game:HttpGet("https://raw.githubusercontent.com/BloodSecret/BloodBlox/main/BloodyBlox.lua"))()
 ]]
 
@@ -13,7 +13,7 @@ end
 
 _G.BloodyBloxLoaded = true
 
-print("[BloodyBlox] Script starting...")
+print("[BloodyBlox] v4.0.0 Script starting...")
 
 -- ============ SAFE BYPASS ============
 
@@ -37,22 +37,34 @@ print("[BloodyBlox] FPS unlocked automatically")
 
 task.wait(0.3)
 
+-- ============ SERVICES ============
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "3.5.2",
+    Version = "4.0.0",
     MenuOpen = false,
-    Player = game:GetService("Players").LocalPlayer,
+    Player = Players.LocalPlayer,
     Settings = {
-        FastFarm = false,
+        FastWeight = false,
         AutoWeight = false,
         AutoRebirth = false,
+        FastRebirth = false,
         WalkSpeed = 16,
         JumpPower = 50,
         Fly = false,
         Noclip = false,
         InfiniteJump = false,
         GodMode = false,
+        InfShield = false,
         AntiAim = false,
         Aimbot = false,
         AimbotFOV = 200,
@@ -61,11 +73,11 @@ local BloodyBlox = {
         Debug = false
     },
     Logs = {},
-    Connections = {}
+    Connections = {},
+    RunningLoops = {}
 }
 
 -- Auto Anti-AFK
-local VirtualUser = game:GetService("VirtualUser")
 BloodyBlox.Player.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
@@ -108,103 +120,827 @@ function BloodyBlox:GetHumanoidRootPart()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- ============ MODERN UI LIBRARY ============
+print("[BloodyBlox] Core framework loaded")
 
-local UI = {}
-UI.__index = UI
+-- ============ MUSCLE LEGENDS SPECIFIC FUNCTIONS ============
 
-function UI:Create()
-    print("[BloodyBlox] Creating transparent UI with background...")
-    local self = setmetatable({}, UI)
+local MuscleLegends = {}
 
-    -- ScreenGui
+-- Find the weight lifting tool in character
+function MuscleLegends:GetWeightTool()
+    local char = BloodyBlox:GetCharacter()
+    if not char then return nil end
+
+    -- Check equipped tool
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool then return tool end
+
+    -- Check backpack
+    local backpack = BloodyBlox.Player:FindFirstChild("Backpack")
+    if backpack then
+        for _, item in pairs(backpack:GetChildren()) do
+            if item:IsA("Tool") and (item.Name:lower():find("weight") or item.Name:lower():find("dumbbell")) then
+                return item
+            end
+        end
+    end
+
+    return nil
+end
+
+-- Equip weight tool
+function MuscleLegends:EquipWeight()
+    local tool = self:GetWeightTool()
+    if tool and tool.Parent ~= BloodyBlox:GetCharacter() then
+        local humanoid = BloodyBlox:GetHumanoid()
+        if humanoid then
+            humanoid:EquipTool(tool)
+            return true
+        end
+    end
+    return false
+end
+
+-- Find Durability value (for God Mode)
+function MuscleLegends:GetDurability()
+    local char = BloodyBlox:GetCharacter()
+    if not char then return nil end
+
+    -- Check multiple possible locations
+    local humanoid = char:FindFirstChild("Humanoid")
+    if humanoid then
+        local durability = humanoid:FindFirstChild("Durability") or humanoid:FindFirstChild("Defense")
+        if durability then return durability end
+    end
+
+    -- Check character root
+    return char:FindFirstChild("Durability") or char:FindFirstChild("Defense")
+end
+
+-- Find Shield object (for Inf Shield)
+function MuscleLegends:GetShield()
+    local char = BloodyBlox:GetCharacter()
+    if not char then return nil end
+
+    -- Check multiple possible shield objects
+    return char:FindFirstChild("Shield") or
+           char:FindFirstChild("SpawnProtection") or
+           char:FindFirstChild("RespawnShield") or
+           (char:FindFirstChild("HumanoidRootPart") and char.HumanoidRootPart:FindFirstChild("Shield"))
+end
+
+-- Find Rebirth remote
+function MuscleLegends:GetRebirthRemote()
+    -- Check ReplicatedStorage for rebirth remotes
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local name = obj.Name:lower()
+            if name:find("rebirth") or name:find("prestige") or name:find("reset") then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
+print("[BloodyBlox] Muscle Legends module loaded")
+
+-- ============ WEIGHT TRAINING SYSTEM ============
+
+local WeightTraining = {}
+
+-- Fast Weight: Remove lift delay, multiply strength gains
+function WeightTraining:ToggleFastWeight(enabled)
+    if self.FastWeightConnection then
+        self.FastWeightConnection:Disconnect()
+        self.FastWeightConnection = nil
+    end
+
+    if enabled then
+        BloodyBlox:Log("FastWeight", "Starting - removing lift delays", "info")
+
+        task.spawn(function()
+            while BloodyBlox.Settings.FastWeight do
+                task.wait(0.05)
+
+                pcall(function()
+                    local tool = MuscleLegends:GetWeightTool()
+                    if tool and tool.Parent == BloodyBlox:GetCharacter() then
+                        -- Fire all tool remotes rapidly
+                        for _, remote in pairs(tool:GetDescendants()) do
+                            if remote:IsA("RemoteEvent") then
+                                remote:FireServer()
+                                remote:FireServer("lift")
+                                remote:FireServer("rep")
+                                remote:FireServer(true)
+                            elseif remote:IsA("RemoteFunction") then
+                                pcall(function() remote:InvokeServer() end)
+                                pcall(function() remote:InvokeServer("lift") end)
+                            end
+                        end
+
+                        -- Spam click for reps
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                        task.wait(0.01)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+                    end
+                end)
+            end
+
+            BloodyBlox:Log("FastWeight", "Stopped", "info")
+        end)
+    end
+end
+
+-- Auto Weight: Automatically pick up weight and do reps
+function WeightTraining:ToggleAutoWeight(enabled)
+    if self.AutoWeightConnection then
+        self.AutoWeightConnection:Disconnect()
+        self.AutoWeightConnection = nil
+    end
+
+    if enabled then
+        BloodyBlox:Log("AutoWeight", "Starting - auto weight pickup and reps", "info")
+
+        task.spawn(function()
+            while BloodyBlox.Settings.AutoWeight do
+                task.wait(0.5)
+
+                pcall(function()
+                    -- Equip weight if not equipped
+                    local tool = MuscleLegends:GetWeightTool()
+                    if not tool or tool.Parent ~= BloodyBlox:GetCharacter() then
+                        MuscleLegends:EquipWeight()
+                        task.wait(0.3)
+                    end
+
+                    -- Do reps
+                    tool = MuscleLegends:GetWeightTool()
+                    if tool and tool.Parent == BloodyBlox:GetCharacter() then
+                        -- Fire remotes for reps
+                        for _, remote in pairs(tool:GetDescendants()) do
+                            if remote:IsA("RemoteEvent") then
+                                remote:FireServer()
+                                remote:FireServer("lift")
+                                remote:FireServer("rep")
+                            end
+                        end
+
+                        -- Click for rep
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                        task.wait(0.05)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+                    end
+                end)
+            end
+
+            BloodyBlox:Log("AutoWeight", "Stopped", "info")
+        end)
+    end
+end
+
+-- Auto Rebirth: Automatically rebirth when available
+function WeightTraining:ToggleAutoRebirth(enabled)
+    if self.AutoRebirthConnection then
+        self.AutoRebirthConnection:Disconnect()
+        self.AutoRebirthConnection = nil
+    end
+
+    if enabled then
+        BloodyBlox:Log("AutoRebirth", "Starting - watching for rebirth availability", "info")
+
+        task.spawn(function()
+            while BloodyBlox.Settings.AutoRebirth do
+                task.wait(2)
+
+                pcall(function()
+                    local rebirthRemote = MuscleLegends:GetRebirthRemote()
+                    if rebirthRemote then
+                        if rebirthRemote:IsA("RemoteEvent") then
+                            rebirthRemote:FireServer()
+                            rebirthRemote:FireServer("rebirth")
+                            rebirthRemote:FireServer("Rebirth")
+                            rebirthRemote:FireServer(true)
+                        elseif rebirthRemote:IsA("RemoteFunction") then
+                            pcall(function() rebirthRemote:InvokeServer() end)
+                            pcall(function() rebirthRemote:InvokeServer("rebirth") end)
+                        end
+
+                        if BloodyBlox.Settings.FastRebirth then
+                            BloodyBlox:Log("AutoRebirth", "Rebirth triggered (fast mode)", "info")
+                        else
+                            BloodyBlox:Log("AutoRebirth", "Rebirth triggered", "info")
+                        end
+                    end
+
+                    -- Try all ReplicatedStorage remotes as fallback
+                    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+                        if obj:IsA("RemoteEvent") then
+                            local name = obj.Name:lower()
+                            if name:find("rebirth") or name:find("prestige") then
+                                pcall(function() obj:FireServer() end)
+                                pcall(function() obj:FireServer("rebirth") end)
+                            end
+                        end
+                    end
+                end)
+            end
+
+            BloodyBlox:Log("AutoRebirth", "Stopped", "info")
+        end)
+    end
+end
+
+-- Fast Rebirth: Skip rebirth animation
+function WeightTraining:ToggleFastRebirth(enabled)
+    BloodyBlox.Settings.FastRebirth = enabled
+
+    if enabled then
+        BloodyBlox:Log("FastRebirth", "Enabled - rebirth animation will skip", "info")
+
+        -- Hook into rebirth to skip animation
+        BloodyBlox.Player.CharacterAdded:Connect(function(char)
+            if BloodyBlox.Settings.FastRebirth then
+                task.wait(0.1)
+                -- Teleport to skip animation
+                local hrp = char:WaitForChild("HumanoidRootPart", 3)
+                if hrp then
+                    hrp.CFrame = hrp.CFrame + Vector3.new(0, 50, 0)
+                    task.wait(0.5)
+                    hrp.CFrame = hrp.CFrame - Vector3.new(0, 50, 0)
+                end
+            end
+        end)
+    else
+        BloodyBlox:Log("FastRebirth", "Disabled", "info")
+    end
+end
+
+print("[BloodyBlox] Weight Training module loaded")
+
+-- ============ PLAYER MODIFICATIONS ============
+
+local Player = {}
+
+function Player:SetWalkSpeed(speed)
+    local humanoid = BloodyBlox:GetHumanoid()
+    if humanoid then
+        humanoid.WalkSpeed = speed
+        BloodyBlox:Log("Player", "WalkSpeed set to " .. speed, "info")
+    end
+end
+
+function Player:SetJumpPower(power)
+    local humanoid = BloodyBlox:GetHumanoid()
+    if humanoid then
+        if humanoid.UseJumpPower then
+            humanoid.JumpPower = power
+        else
+            humanoid.JumpHeight = power / 5
+        end
+        BloodyBlox:Log("Player", "JumpPower set to " .. power, "info")
+    end
+end
+
+function Player:ToggleFly(enabled)
+    if self.FlyConnection then
+        self.FlyConnection:Disconnect()
+        self.FlyConnection = nil
+    end
+
+    if self.BodyVelocity then
+        self.BodyVelocity:Destroy()
+        self.BodyVelocity = nil
+    end
+
+    if enabled then
+        local hrp = BloodyBlox:GetHumanoidRootPart()
+        if not hrp then return end
+
+        self.BodyVelocity = Instance.new("BodyVelocity")
+        self.BodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        self.BodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        self.BodyVelocity.Parent = hrp
+
+        self.FlyConnection = RunService.Heartbeat:Connect(function()
+            if not BloodyBlox.Settings.Fly then
+                if self.FlyConnection then
+                    self.FlyConnection:Disconnect()
+                    self.FlyConnection = nil
+                end
+                if self.BodyVelocity then
+                    self.BodyVelocity:Destroy()
+                    self.BodyVelocity = nil
+                end
+                return
+            end
+
+            local hrp = BloodyBlox:GetHumanoidRootPart()
+            if hrp and self.BodyVelocity then
+                local camera = workspace.CurrentCamera
+                local moveDirection = Vector3.new(0, 0, 0)
+
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    moveDirection = moveDirection + camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    moveDirection = moveDirection - camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    moveDirection = moveDirection - camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    moveDirection = moveDirection + camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    moveDirection = moveDirection + Vector3.new(0, 1, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    moveDirection = moveDirection - Vector3.new(0, 1, 0)
+                end
+
+                self.BodyVelocity.Velocity = moveDirection * 25
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.FlyConnection)
+        BloodyBlox:Log("Player", "Fly: ON", "info")
+    else
+        BloodyBlox:Log("Player", "Fly: OFF", "info")
+    end
+end
+
+function Player:ToggleNoclip(enabled)
+    if self.NoclipConnection then
+        self.NoclipConnection:Disconnect()
+        self.NoclipConnection = nil
+    end
+
+    if enabled then
+        self.NoclipConnection = RunService.Stepped:Connect(function()
+            if not BloodyBlox.Settings.Noclip then
+                if self.NoclipConnection then
+                    self.NoclipConnection:Disconnect()
+                    self.NoclipConnection = nil
+                end
+                return
+            end
+
+            local char = BloodyBlox:GetCharacter()
+            if char then
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.NoclipConnection)
+        BloodyBlox:Log("Player", "Noclip: ON", "info")
+    else
+        local char = BloodyBlox:GetCharacter()
+        if char then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CanCollide = true
+                end
+            end
+        end
+        BloodyBlox:Log("Player", "Noclip: OFF", "info")
+    end
+end
+
+function Player:ToggleInfiniteJump(enabled)
+    if self.InfiniteJumpConnection then
+        self.InfiniteJumpConnection:Disconnect()
+        self.InfiniteJumpConnection = nil
+    end
+
+    if enabled then
+        self.InfiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
+            if BloodyBlox.Settings.InfiniteJump then
+                local humanoid = BloodyBlox:GetHumanoid()
+                if humanoid then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.InfiniteJumpConnection)
+        BloodyBlox:Log("Player", "Infinite Jump: ON", "info")
+    else
+        BloodyBlox:Log("Player", "Infinite Jump: OFF", "info")
+    end
+end
+
+function Player:ToggleAntiAim(enabled)
+    if self.AntiAimConnection then
+        self.AntiAimConnection:Disconnect()
+        self.AntiAimConnection = nil
+    end
+
+    if enabled then
+        self.AntiAimConnection = RunService.Heartbeat:Connect(function()
+            if not BloodyBlox.Settings.AntiAim then
+                if self.AntiAimConnection then
+                    self.AntiAimConnection:Disconnect()
+                    self.AntiAimConnection = nil
+                end
+                return
+            end
+
+            local hrp = BloodyBlox:GetHumanoidRootPart()
+            if hrp then
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(30), 0)
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.AntiAimConnection)
+        BloodyBlox:Log("Player", "AntiAim: Classic Spin Active", "info")
+    else
+        BloodyBlox:Log("Player", "AntiAim: OFF", "info")
+    end
+end
+
+-- God Mode: TRUE INVINCIBILITY via Durability + Health
+function Player:ToggleGodMode(enabled)
+    local humanoid = BloodyBlox:GetHumanoid()
+    local character = BloodyBlox:GetCharacter()
+
+    if not humanoid or not character then return end
+
+    if self.GodModeConnection then
+        self.GodModeConnection:Disconnect()
+        self.GodModeConnection = nil
+    end
+
+    if enabled then
+        -- Method 1: Infinite Health
+        humanoid.MaxHealth = math.huge
+        humanoid.Health = math.huge
+
+        -- Method 2: Durability manipulation
+        local durability = MuscleLegends:GetDurability()
+        if durability and durability:IsA("NumberValue") then
+            durability.Value = math.huge
+            BloodyBlox:Log("GodMode", "Durability set to INFINITE", "info")
+        end
+
+        -- Method 3: Invisible ForceField
+        local forceField = Instance.new("ForceField")
+        forceField.Visible = false
+        forceField.Parent = character
+
+        -- Constant health + durability restore
+        self.GodModeConnection = RunService.Heartbeat:Connect(function()
+            if not BloodyBlox.Settings.GodMode then
+                if self.GodModeConnection then
+                    self.GodModeConnection:Disconnect()
+                    self.GodModeConnection = nil
+                end
+                return
+            end
+
+            if humanoid then
+                humanoid.Health = math.huge
+                humanoid.MaxHealth = math.huge
+            end
+
+            -- Keep durability maxed
+            local durability = MuscleLegends:GetDurability()
+            if durability and durability:IsA("NumberValue") then
+                durability.Value = math.huge
+            end
+        end)
+
+        -- Block Died event
+        humanoid.Died:Connect(function()
+            if BloodyBlox.Settings.GodMode then
+                humanoid.Health = math.huge
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.GodModeConnection)
+        BloodyBlox:Log("GodMode", "TRUE INVINCIBILITY - Health + Durability + ForceField", "warn")
+    else
+        -- Remove ForceField
+        for _, v in pairs(character:GetChildren()) do
+            if v:IsA("ForceField") then
+                v:Destroy()
+            end
+        end
+
+        humanoid.MaxHealth = 100
+        humanoid.Health = 100
+
+        -- Reset durability
+        local durability = MuscleLegends:GetDurability()
+        if durability and durability:IsA("NumberValue") then
+            durability.Value = 100
+        end
+
+        BloodyBlox:Log("GodMode", "OFF", "info")
+    end
+end
+
+-- Infinite Shield: Shield never expires after respawn
+function Player:ToggleInfShield(enabled)
+    if self.InfShieldConnection then
+        self.InfShieldConnection:Disconnect()
+        self.InfShieldConnection = nil
+    end
+
+    if enabled then
+        BloodyBlox:Log("InfShield", "Enabled - shield will be infinite on respawn", "info")
+
+        -- Apply to current character
+        task.spawn(function()
+            local shield = MuscleLegends:GetShield()
+            if shield then
+                if shield:IsA("NumberValue") then
+                    shield.Value = math.huge
+                elseif shield:FindFirstChild("Duration") then
+                    shield.Duration.Value = math.huge
+                end
+                BloodyBlox:Log("InfShield", "Applied to current character", "info")
+            end
+        end)
+
+        -- Apply on every respawn
+        self.InfShieldConnection = BloodyBlox.Player.CharacterAdded:Connect(function(char)
+            if BloodyBlox.Settings.InfShield then
+                task.wait(0.5)  -- Wait for shield to spawn
+
+                local shield = MuscleLegends:GetShield()
+                if shield then
+                    if shield:IsA("NumberValue") then
+                        shield.Value = math.huge
+                    elseif shield:FindFirstChild("Duration") then
+                        shield.Duration.Value = math.huge
+                    end
+
+                    -- Prevent shield deletion
+                    shield.AncestryChanged:Connect(function()
+                        if not shield.Parent and BloodyBlox.Settings.InfShield then
+                            shield.Parent = char
+                        end
+                    end)
+
+                    BloodyBlox:Log("InfShield", "Applied on respawn - shield is infinite", "warn")
+                else
+                    BloodyBlox:Log("InfShield", "Shield object not found on respawn", "error")
+                end
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.InfShieldConnection)
+    else
+        BloodyBlox:Log("InfShield", "Disabled", "info")
+    end
+end
+
+print("[BloodyBlox] Player module loaded")
+
+-- ============ COMBAT SYSTEM ============
+
+local Combat = {}
+
+function Combat:GetClosestPlayer()
+    local camera = workspace.CurrentCamera
+    local localPlayer = BloodyBlox.Player
+    local closestPlayer = nil
+    local shortestDistance = BloodyBlox.Settings.AimbotFOV
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local head = player.Character:FindFirstChild("Head")
+
+            if hrp and head then
+                local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+
+                if onScreen then
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+function Combat:ToggleAimbot(enabled)
+    if self.AimbotConnection then
+        self.AimbotConnection:Disconnect()
+        self.AimbotConnection = nil
+    end
+
+    if enabled then
+        self.AimbotConnection = RunService.RenderStepped:Connect(function()
+            if not BloodyBlox.Settings.Aimbot then
+                if self.AimbotConnection then
+                    self.AimbotConnection:Disconnect()
+                    self.AimbotConnection = nil
+                end
+                return
+            end
+
+            local target = self:GetClosestPlayer()
+            if target and target.Character then
+                local head = target.Character:FindFirstChild("Head")
+                if head then
+                    local camera = workspace.CurrentCamera
+                    camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
+                end
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.AimbotConnection)
+        BloodyBlox:Log("Combat", "Aimbot: LOCKED ON", "info")
+    else
+        BloodyBlox:Log("Combat", "Aimbot: OFF", "info")
+    end
+end
+
+function Combat:ToggleKillAura(enabled)
+    if self.KillAuraConnection then
+        self.KillAuraConnection:Disconnect()
+        self.KillAuraConnection = nil
+    end
+
+    if enabled then
+        local lastAttackTime = 0
+        local attackCooldown = 0.5
+
+        self.KillAuraConnection = RunService.Heartbeat:Connect(function()
+            if not BloodyBlox.Settings.KillAura then
+                if self.KillAuraConnection then
+                    self.KillAuraConnection:Disconnect()
+                    self.KillAuraConnection = nil
+                end
+                return
+            end
+
+            local currentTime = tick()
+            if currentTime - lastAttackTime < attackCooldown then
+                return
+            end
+
+            local localPlayer = BloodyBlox.Player
+            local hrp = BloodyBlox:GetHumanoidRootPart()
+
+            if not hrp then return end
+
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= localPlayer and player.Character then
+                    local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
+                    local targetHumanoid = player.Character:FindFirstChild("Humanoid")
+
+                    if targetHRP and targetHumanoid then
+                        local distance = (hrp.Position - targetHRP.Position).Magnitude
+
+                        if distance <= BloodyBlox.Settings.KillAuraRange then
+                            pcall(function()
+                                targetHumanoid.Health = 0
+
+                                local eventCount = 0
+                                for _, obj in pairs(ReplicatedStorage:GetChildren()) do
+                                    if obj:IsA("RemoteEvent") and eventCount < 5 then
+                                        pcall(function() obj:FireServer("damage", player) end)
+                                        pcall(function() obj:FireServer("kill", player) end)
+                                        pcall(function() obj:FireServer("attack", player) end)
+                                        eventCount = eventCount + 1
+                                    end
+                                end
+                            end)
+
+                            lastAttackTime = currentTime
+                            break
+                        end
+                    end
+                end
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.KillAuraConnection)
+        BloodyBlox:Log("Combat", "Kill Aura: SILENT MODE (0.5s cooldown, no teleport)", "warn")
+    else
+        BloodyBlox:Log("Combat", "Kill Aura: OFF", "info")
+    end
+end
+
+print("[BloodyBlox] Combat module loaded")
+
+-- ============ CONFIG SYSTEM ============
+
+local Config = {}
+
+function Config:Save(configName)
+    if configName == "" then return end
+
+    local configData = {
+        Settings = BloodyBlox.Settings,
+        Version = BloodyBlox.Version
+    }
+
+    pcall(function()
+        writefile("BloodyBlox_" .. configName .. ".json", game:GetService("HttpService"):JSONEncode(configData))
+        BloodyBlox:Log("Config", "Saved: " .. configName, "info")
+    end)
+end
+
+function Config:Load(configName)
+    if configName == "" then return end
+
+    pcall(function()
+        if isfile("BloodyBlox_" .. configName .. ".json") then
+            local data = game:GetService("HttpService"):JSONDecode(readfile("BloodyBlox_" .. configName .. ".json"))
+            BloodyBlox.Settings = data.Settings
+            BloodyBlox:Log("Config", "Loaded: " .. configName, "info")
+        else
+            BloodyBlox:Log("Config", "File not found: " .. configName, "error")
+        end
+    end)
+end
+
+function Config:Delete(configName)
+    if configName == "" then return end
+
+    pcall(function()
+        if isfile("BloodyBlox_" .. configName .. ".json") then
+            delfile("BloodyBlox_" .. configName .. ".json")
+            BloodyBlox:Log("Config", "Deleted: " .. configName, "warn")
+        else
+            BloodyBlox:Log("Config", "File not found: " .. configName, "error")
+        end
+    end)
+end
+
+print("[BloodyBlox] Config module loaded")
+
+-- ============ UI SYSTEM ============
+
+local MainUI = {}
+
+function MainUI:Create()
     self.ScreenGui = Instance.new("ScreenGui")
-    self.ScreenGui.Name = "BloodyBloxUI"
+    self.ScreenGui.Name = "BloodyBloxUI_" .. game:GetService("HttpService"):GenerateGUID(false)
     self.ScreenGui.ResetOnSpawn = false
     self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    self.ScreenGui.DisplayOrder = 999
+    self.ScreenGui.Parent = BloodyBlox.Player:WaitForChild("PlayerGui")
 
-    -- Main Container (MORE transparent)
+    -- Main frame (75% transparent)
     self.MainFrame = Instance.new("Frame")
-    self.MainFrame.Size = UDim2.new(0, 600, 0, 400)
-    self.MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-    self.MainFrame.BackgroundTransparency = 0.5  -- Much more transparent
+    self.MainFrame.Size = UDim2.new(0, 700, 0, 500)
+    self.MainFrame.Position = UDim2.new(0.5, -350, 0.5, -250)
+    self.MainFrame.BackgroundTransparency = 0.75  -- 75% transparent
     self.MainFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 10)
     self.MainFrame.BorderSizePixel = 0
     self.MainFrame.Active = true
     self.MainFrame.Draggable = true
     self.MainFrame.ClipsDescendants = true
+    self.MainFrame.ZIndex = 1
     self.MainFrame.Parent = self.ScreenGui
 
     local mainCorner = Instance.new("UICorner")
     mainCorner.CornerRadius = UDim.new(0, 12)
     mainCorner.Parent = self.MainFrame
 
-    -- Background Image (non-transparent)
-    local background = Instance.new("ImageLabel")
-    background.Name = "Background"
-    background.Size = UDim2.new(1, 0, 1, 0)
-    background.BackgroundTransparency = 1
-    background.ScaleType = Enum.ScaleType.Crop
-    background.ImageTransparency = 0  -- Fully opaque
-    background.ZIndex = 0
-    background.Parent = self.MainFrame
+    -- Background image layer
+    local backgroundImage = Instance.new("ImageLabel")
+    backgroundImage.Size = UDim2.new(1, 0, 1, 0)
+    backgroundImage.Position = UDim2.new(0, 0, 0, 0)
+    backgroundImage.BackgroundTransparency = 1
+    backgroundImage.ImageTransparency = 0.5
+    backgroundImage.ScaleType = Enum.ScaleType.Crop
+    backgroundImage.ZIndex = 0
+    backgroundImage.Parent = self.MainFrame
 
-    local bgCorner = Instance.new("UICorner")
-    bgCorner.CornerRadius = UDim.new(0, 12)
-    bgCorner.Parent = background
-
-    -- Try to load background image from file
+    -- Try to load background image
     pcall(function()
-        local bgPath = "C:\\Roblox\\background.png"
-        if isfile and readfile and isfile(bgPath) then
-            local bgData = readfile(bgPath)
-            -- Try to use getcustomasset if available
+        if isfile("background.png") then
+            local imageData = readfile("background.png")
             if getcustomasset then
-                background.Image = getcustomasset(bgPath)
-                print("[BloodyBlox] Background loaded from file")
-            elseif getsynasset then
-                background.Image = getsynasset(bgPath)
-                print("[BloodyBlox] Background loaded from file")
-            else
-                -- Fallback: use dark gradient
-                background.Image = ""
-                background.BackgroundTransparency = 0
-                background.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
-
-                local gradient = Instance.new("UIGradient")
-                gradient.Color = ColorSequence.new{
-                    ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 10, 20)),
-                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(10, 10, 15)),
-                    ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 10, 20))
-                }
-                gradient.Rotation = 45
-                gradient.Parent = background
-                print("[BloodyBlox] Using gradient background (getcustomasset not available)")
+                backgroundImage.Image = getcustomasset("background.png")
+                BloodyBlox:Log("UI", "Background image loaded successfully", "info")
             end
         else
-            -- Fallback: dark gradient
-            background.Image = ""
-            background.BackgroundTransparency = 0
-            background.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
-
-            local gradient = Instance.new("UIGradient")
-            gradient.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 10, 20)),
-                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(10, 10, 15)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 10, 20))
-            }
-            gradient.Rotation = 45
-            gradient.Parent = background
-            print("[BloodyBlox] Background file not found, using gradient")
+            BloodyBlox:Log("UI", "No background.png found in script folder", "warn")
         end
     end)
 
-    -- Blur overlay for glassmorphism effect (MORE transparent)
+    -- Blur overlay (75% transparent)
     local blurOverlay = Instance.new("Frame")
     blurOverlay.Size = UDim2.new(1, 0, 1, 0)
     blurOverlay.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
-    blurOverlay.BackgroundTransparency = 0.6  -- Much more transparent
+    blurOverlay.BackgroundTransparency = 0.75  -- 75% transparent
     blurOverlay.BorderSizePixel = 0
     blurOverlay.ZIndex = 1
     blurOverlay.Parent = self.MainFrame
@@ -265,43 +1001,43 @@ function UI:Create()
     versionCorner.CornerRadius = UDim.new(0, 4)
     versionCorner.Parent = versionLabel
 
-    -- Control buttons (X minimizes menu, Exit in Settings closes cheat)
-    self.ExitButton = Instance.new("TextButton")
-    self.ExitButton.Size = UDim2.new(0, 35, 0, 35)
-    self.ExitButton.Position = UDim2.new(1, -40, 0.5, -17.5)
-    self.ExitButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    self.ExitButton.BackgroundTransparency = 0.3
-    self.ExitButton.BorderSizePixel = 0
-    self.ExitButton.Text = "×"
-    self.ExitButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-    self.ExitButton.Font = Enum.Font.GothamBold
-    self.ExitButton.TextSize = 20
-    self.ExitButton.ZIndex = 3
-    self.ExitButton.Parent = self.TitleBar
+    -- Close button (X minimizes menu)
+    self.CloseButton = Instance.new("TextButton")
+    self.CloseButton.Size = UDim2.new(0, 35, 0, 35)
+    self.CloseButton.Position = UDim2.new(1, -40, 0.5, -17.5)
+    self.CloseButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    self.CloseButton.BackgroundTransparency = 0.3
+    self.CloseButton.BorderSizePixel = 0
+    self.CloseButton.Text = "×"
+    self.CloseButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+    self.CloseButton.Font = Enum.Font.GothamBold
+    self.CloseButton.TextSize = 20
+    self.CloseButton.ZIndex = 3
+    self.CloseButton.Parent = self.TitleBar
 
-    local exitCorner = Instance.new("UICorner")
-    exitCorner.CornerRadius = UDim.new(0, 6)
-    exitCorner.Parent = self.ExitButton
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.Parent = self.CloseButton
 
-    self.ExitButton.MouseEnter:Connect(function()
-        self.ExitButton.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
-        self.ExitButton.BackgroundTransparency = 0.1
+    self.CloseButton.MouseEnter:Connect(function()
+        self.CloseButton.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+        self.CloseButton.BackgroundTransparency = 0.1
     end)
-    self.ExitButton.MouseLeave:Connect(function()
-        self.ExitButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-        self.ExitButton.BackgroundTransparency = 0.3
+    self.CloseButton.MouseLeave:Connect(function()
+        self.CloseButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+        self.CloseButton.BackgroundTransparency = 0.3
     end)
-    self.ExitButton.MouseButton1Click:Connect(function()
+    self.CloseButton.MouseButton1Click:Connect(function()
         self.ScreenGui.Enabled = false
         BloodyBlox.MenuOpen = false
     end)
 
-    -- Sidebar for tabs (MORE transparent)
+    -- Sidebar for tabs
     self.TabContainer = Instance.new("ScrollingFrame")
     self.TabContainer.Size = UDim2.new(0, 140, 1, -65)
     self.TabContainer.Position = UDim2.new(0, 10, 0, 58)
     self.TabContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-    self.TabContainer.BackgroundTransparency = 0.6  -- Much more transparent
+    self.TabContainer.BackgroundTransparency = 0.75
     self.TabContainer.BorderSizePixel = 0
     self.TabContainer.ScrollBarThickness = 0
     self.TabContainer.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -326,12 +1062,12 @@ function UI:Create()
     tabPadding.PaddingBottom = UDim.new(0, 8)
     tabPadding.Parent = self.TabContainer
 
-    -- Content area (MORE transparent)
+    -- Content area
     self.ContentContainer = Instance.new("Frame")
     self.ContentContainer.Size = UDim2.new(1, -170, 1, -65)
     self.ContentContainer.Position = UDim2.new(0, 160, 0, 58)
     self.ContentContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-    self.ContentContainer.BackgroundTransparency = 0.6  -- Much more transparent
+    self.ContentContainer.BackgroundTransparency = 0.75
     self.ContentContainer.BorderSizePixel = 0
     self.ContentContainer.ZIndex = 2
     self.ContentContainer.Parent = self.MainFrame
@@ -340,344 +1076,295 @@ function UI:Create()
     contentCorner.CornerRadius = UDim.new(0, 8)
     contentCorner.Parent = self.ContentContainer
 
-    self.Tabs = {}
-    self.ActiveTab = nil
-
-    self.ScreenGui.Parent = BloodyBlox.Player:WaitForChild("PlayerGui")
-
-    print("[BloodyBlox] Transparent UI with background created")
+    print("[BloodyBlox] UI created successfully")
     return self
 end
 
-function UI:CreateTab(name)
+function MainUI:CreateTab(name)
     local tab = {}
+    tab.Name = name
+    tab.Active = false
 
-    local tabButton = Instance.new("TextButton")
-    tabButton.Size = UDim2.new(1, 0, 0, 36)
-    tabButton.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    tabButton.BorderSizePixel = 0
-    tabButton.Text = name
-    tabButton.TextColor3 = Color3.fromRGB(160, 160, 165)
-    tabButton.Font = Enum.Font.GothamSemibold
-    tabButton.TextSize = 14
-    tabButton.TextXAlignment = Enum.TextXAlignment.Left
-    tabButton.Parent = self.TabContainer
+    -- Tab button
+    tab.Button = Instance.new("TextButton")
+    tab.Button.Size = UDim2.new(1, -16, 0, 35)
+    tab.Button.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    tab.Button.BackgroundTransparency = 0.3
+    tab.Button.BorderSizePixel = 0
+    tab.Button.Text = name
+    tab.Button.TextColor3 = Color3.fromRGB(180, 180, 180)
+    tab.Button.Font = Enum.Font.Gotham
+    tab.Button.TextSize = 13
+    tab.Button.ZIndex = 3
+    tab.Button.Parent = self.TabContainer
 
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 6)
-    buttonCorner.Parent = tabButton
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 6)
+    btnCorner.Parent = tab.Button
 
-    local buttonPadding = Instance.new("UIPadding")
-    buttonPadding.PaddingLeft = UDim.new(0, 12)
-    buttonPadding.Parent = tabButton
-
-    local tabContent = Instance.new("ScrollingFrame")
-    tabContent.Size = UDim2.new(1, -20, 1, -20)
-    tabContent.Position = UDim2.new(0, 10, 0, 10)
-    tabContent.BackgroundTransparency = 1
-    tabContent.BorderSizePixel = 0
-    tabContent.ScrollBarThickness = 4
-    tabContent.ScrollBarImageColor3 = Color3.fromRGB(139, 0, 0)
-    tabContent.Visible = false
-    tabContent.CanvasSize = UDim2.new(0, 0, 0, 0)
-    tabContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    tabContent.Parent = self.ContentContainer
+    -- Tab content
+    tab.Content = Instance.new("ScrollingFrame")
+    tab.Content.Size = UDim2.new(1, -20, 1, -20)
+    tab.Content.Position = UDim2.new(0, 10, 0, 10)
+    tab.Content.BackgroundTransparency = 1
+    tab.Content.BorderSizePixel = 0
+    tab.Content.ScrollBarThickness = 4
+    tab.Content.ScrollingDirection = Enum.ScrollingDirection.Y
+    tab.Content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    tab.Content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    tab.Content.Visible = false
+    tab.Content.ZIndex = 3
+    tab.Content.Parent = self.ContentContainer
 
     local contentLayout = Instance.new("UIListLayout")
     contentLayout.Padding = UDim.new(0, 8)
     contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    contentLayout.Parent = tabContent
+    contentLayout.Parent = tab.Content
 
-    tab.Button = tabButton
-    tab.Content = tabContent
+    local contentPadding = Instance.new("UIPadding")
+    contentPadding.PaddingTop = UDim.new(0, 5)
+    contentPadding.PaddingBottom = UDim.new(0, 5)
+    contentPadding.Parent = tab.Content
 
-    tabButton.MouseEnter:Connect(function()
-        if self.ActiveTab ~= name then
-            tabButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    tab.Button.MouseButton1Click:Connect(function()
+        for _, otherTab in pairs(self.ContentContainer:GetChildren()) do
+            if otherTab:IsA("ScrollingFrame") then
+                otherTab.Visible = false
+            end
+        end
+
+        for _, otherBtn in pairs(self.TabContainer:GetChildren()) do
+            if otherBtn:IsA("TextButton") then
+                otherBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+                otherBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
+            end
+        end
+
+        tab.Content.Visible = true
+        tab.Button.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+        tab.Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+
+    tab.Button.MouseEnter:Connect(function()
+        if not tab.Active then
+            tab.Button.BackgroundTransparency = 0.1
         end
     end)
-
-    tabButton.MouseLeave:Connect(function()
-        if self.ActiveTab ~= name then
-            tabButton.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    tab.Button.MouseLeave:Connect(function()
+        if not tab.Active then
+            tab.Button.BackgroundTransparency = 0.3
         end
     end)
-
-    tabButton.MouseButton1Click:Connect(function()
-        self:SwitchTab(name)
-    end)
-
-    self.Tabs[name] = tab
-
-    if not self.ActiveTab then
-        self:SwitchTab(name)
-    end
 
     return tab
 end
 
-function UI:SwitchTab(name)
-    for tabName, tab in pairs(self.Tabs) do
-        if tabName == name then
-            tab.Content.Visible = true
-            tab.Button.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
-            tab.Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            self.ActiveTab = name
-        else
-            tab.Content.Visible = false
-            tab.Button.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-            tab.Button.TextColor3 = Color3.fromRGB(160, 160, 165)
-        end
-    end
-end
+function MainUI:AddToggle(tab, text, default, callback)
+    local toggle = Instance.new("Frame")
+    toggle.Size = UDim2.new(1, 0, 0, 35)
+    toggle.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    toggle.BackgroundTransparency = 0.4
+    toggle.BorderSizePixel = 0
+    toggle.ZIndex = 4
+    toggle.Parent = tab.Content
 
-function UI:AddLabel(tab, text)
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 6)
+    toggleCorner.Parent = toggle
+
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -10, 0, 24)
+    label.Size = UDim2.new(1, -50, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
     label.BackgroundTransparency = 1
     label.Text = text
-    label.TextColor3 = Color3.fromRGB(200, 200, 205)
+    label.TextColor3 = Color3.fromRGB(220, 220, 220)
     label.Font = Enum.Font.Gotham
-    label.TextSize = 13
+    label.TextSize = 12
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = tab.Content
-    return label
-end
+    label.ZIndex = 5
+    label.Parent = toggle
 
-function UI:AddToggle(tab, text, default, callback)
-    local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, -10, 0, 42)
-    container.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    container.BorderSizePixel = 0
-    container.Parent = tab.Content
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0, 40, 0, 20)
+    button.Position = UDim2.new(1, -45, 0.5, -10)
+    button.BackgroundColor3 = default and Color3.fromRGB(0, 139, 0) or Color3.fromRGB(80, 80, 80)
+    button.BorderSizePixel = 0
+    button.Text = default and "ON" or "OFF"
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Font = Enum.Font.GothamBold
+    button.TextSize = 10
+    button.ZIndex = 5
+    button.Parent = toggle
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = container
-
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -80, 1, 0)
-    label.Position = UDim2.new(0, 14, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(220, 220, 225)
-    label.Font = Enum.Font.GothamSemibold
-    label.TextSize = 13
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = container
-
-    -- Toggle switch background
-    local toggleBG = Instance.new("Frame")
-    toggleBG.Size = UDim2.new(0, 48, 0, 26)
-    toggleBG.Position = UDim2.new(1, -60, 0.5, -13)
-    toggleBG.BackgroundColor3 = default and Color3.fromRGB(139, 0, 0) or Color3.fromRGB(40, 40, 45)
-    toggleBG.BorderSizePixel = 0
-    toggleBG.Parent = container
-
-    local bgCorner = Instance.new("UICorner")
-    bgCorner.CornerRadius = UDim.new(1, 0)
-    bgCorner.Parent = toggleBG
-
-    -- Toggle circle
-    local toggleCircle = Instance.new("Frame")
-    toggleCircle.Size = UDim2.new(0, 20, 0, 20)
-    toggleCircle.Position = default and UDim2.new(1, -23, 0.5, -10) or UDim2.new(0, 3, 0.5, -10)
-    toggleCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    toggleCircle.BorderSizePixel = 0
-    toggleCircle.Parent = toggleBG
-
-    local circleCorner = Instance.new("UICorner")
-    circleCorner.CornerRadius = UDim.new(1, 0)
-    circleCorner.Parent = toggleCircle
-
-    local toggle = Instance.new("TextButton")
-    toggle.Size = UDim2.new(1, 0, 1, 0)
-    toggle.BackgroundTransparency = 1
-    toggle.Text = ""
-    toggle.Parent = toggleBG
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 4)
+    btnCorner.Parent = button
 
     local state = default
 
-    toggle.MouseButton1Click:Connect(function()
+    button.MouseButton1Click:Connect(function()
         state = not state
-
-        toggleBG.BackgroundColor3 = state and Color3.fromRGB(139, 0, 0) or Color3.fromRGB(40, 40, 45)
-        toggleCircle:TweenPosition(
-            state and UDim2.new(1, -23, 0.5, -10) or UDim2.new(0, 3, 0.5, -10),
-            Enum.EasingDirection.Out,
-            Enum.EasingStyle.Quad,
-            0.2,
-            true
-        )
-
+        button.Text = state and "ON" or "OFF"
+        button.BackgroundColor3 = state and Color3.fromRGB(0, 139, 0) or Color3.fromRGB(80, 80, 80)
         callback(state)
     end)
-
-    return toggle
 end
 
-function UI:AddButton(tab, text, callback)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, -10, 0, 42)
-    button.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
-    button.BorderSizePixel = 0
-    button.Text = text
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.Font = Enum.Font.GothamBold
-    button.TextSize = 13
-    button.Parent = tab.Content
+function MainUI:AddSlider(tab, text, min, max, default, callback)
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Size = UDim2.new(1, 0, 0, 50)
+    sliderFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    sliderFrame.BackgroundTransparency = 0.4
+    sliderFrame.BorderSizePixel = 0
+    sliderFrame.ZIndex = 4
+    sliderFrame.Parent = tab.Content
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = button
-
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(160, 0, 0)
-    end)
-
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
-    end)
-
-    button.MouseButton1Click:Connect(callback)
-
-    return button
-end
-
-function UI:AddSlider(tab, text, min, max, default, callback)
-    local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, -10, 0, 65)
-    container.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    container.BorderSizePixel = 0
-    container.Parent = tab.Content
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = container
+    local frameCorner = Instance.new("UICorner")
+    frameCorner.CornerRadius = UDim.new(0, 6)
+    frameCorner.Parent = sliderFrame
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -28, 0, 26)
-    label.Position = UDim2.new(0, 14, 0, 8)
+    label.Size = UDim2.new(1, -20, 0, 20)
+    label.Position = UDim2.new(0, 10, 0, 5)
     label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(200, 200, 205)
-    label.Font = Enum.Font.GothamSemibold
-    label.TextSize = 13
+    label.Text = text .. ": " .. default
+    label.TextColor3 = Color3.fromRGB(220, 220, 220)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 12
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = container
+    label.ZIndex = 5
+    label.Parent = sliderFrame
 
-    local valueLabel = Instance.new("TextLabel")
-    valueLabel.Size = UDim2.new(0, 60, 0, 26)
-    valueLabel.Position = UDim2.new(1, -74, 0, 8)
-    valueLabel.BackgroundTransparency = 1
-    valueLabel.Text = tostring(default)
-    valueLabel.TextColor3 = Color3.fromRGB(139, 0, 0)
-    valueLabel.Font = Enum.Font.GothamBold
-    valueLabel.TextSize = 13
-    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
-    valueLabel.Parent = container
-
-    local sliderBack = Instance.new("Frame")
-    sliderBack.Size = UDim2.new(1, -28, 0, 6)
-    sliderBack.Position = UDim2.new(0, 14, 1, -18)
-    sliderBack.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-    sliderBack.BorderSizePixel = 0
-    sliderBack.Parent = container
+    local slider = Instance.new("Frame")
+    slider.Size = UDim2.new(1, -20, 0, 6)
+    slider.Position = UDim2.new(0, 10, 1, -15)
+    slider.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    slider.BorderSizePixel = 0
+    slider.ZIndex = 5
+    slider.Parent = sliderFrame
 
     local sliderCorner = Instance.new("UICorner")
-    sliderCorner.CornerRadius = UDim.new(1, 0)
-    sliderCorner.Parent = sliderBack
+    sliderCorner.CornerRadius = UDim.new(0, 3)
+    sliderCorner.Parent = slider
 
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    sliderFill.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
-    sliderFill.BorderSizePixel = 0
-    sliderFill.Parent = sliderBack
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 6
+    fill.Parent = slider
 
     local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(1, 0)
-    fillCorner.Parent = sliderFill
+    fillCorner.CornerRadius = UDim.new(0, 3)
+    fillCorner.Parent = fill
 
     local dragging = false
 
-    local function updateSlider(input)
-        local pos = math.clamp((input.Position.X - sliderBack.AbsolutePosition.X) / sliderBack.AbsoluteSize.X, 0, 1)
-        local value = math.floor(min + (max - min) * pos)
-        sliderFill.Size = UDim2.new(pos, 0, 1, 0)
-        valueLabel.Text = tostring(value)
-        callback(value)
-    end
-
-    sliderBack.InputBegan:Connect(function(input)
+    slider.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
-            updateSlider(input)
         end
     end)
 
-    sliderBack.InputEnded:Connect(function(input)
+    slider.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
 
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
+    UserInputService.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            updateSlider(input)
+            local pos = math.clamp((input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
+            fill.Size = UDim2.new(pos, 0, 1, 0)
+            local value = math.floor(min + (max - min) * pos)
+            label.Text = text .. ": " .. value
+            callback(value)
         end
     end)
-
-    return container
 end
 
-function UI:AddTextBox(tab, placeholder, callback)
-    local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, -10, 0, 42)
-    container.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    container.BorderSizePixel = 0
-    container.Parent = tab.Content
+function MainUI:AddButton(tab, text, callback)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, 0, 0, 35)
+    button.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+    button.BackgroundTransparency = 0.3
+    button.BorderSizePixel = 0
+    button.Text = text
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Font = Enum.Font.GothamBold
+    button.TextSize = 12
+    button.ZIndex = 4
+    button.Parent = tab.Content
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = container
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 6)
+    btnCorner.Parent = button
 
-    local textbox = Instance.new("TextBox")
-    textbox.Size = UDim2.new(1, -24, 1, 0)
-    textbox.Position = UDim2.new(0, 12, 0, 0)
-    textbox.BackgroundTransparency = 1
-    textbox.PlaceholderText = placeholder
-    textbox.PlaceholderColor3 = Color3.fromRGB(100, 100, 105)
-    textbox.Text = ""
-    textbox.TextColor3 = Color3.fromRGB(220, 220, 225)
-    textbox.Font = Enum.Font.Gotham
-    textbox.TextSize = 13
-    textbox.TextXAlignment = Enum.TextXAlignment.Left
-    textbox.ClearTextOnFocus = false
-    textbox.Parent = container
+    button.MouseButton1Click:Connect(callback)
 
-    textbox.Focused:Connect(function()
-        container.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    button.MouseEnter:Connect(function()
+        button.BackgroundTransparency = 0.1
     end)
+    button.MouseLeave:Connect(function()
+        button.BackgroundTransparency = 0.3
+    end)
+end
+
+function MainUI:AddLabel(tab, text)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 20)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(150, 150, 150)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 11
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.ZIndex = 4
+    label.Parent = tab.Content
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 10)
+    padding.Parent = label
+end
+
+function MainUI:AddTextBox(tab, placeholder, callback)
+    local textbox = Instance.new("TextBox")
+    textbox.Size = UDim2.new(1, 0, 0, 35)
+    textbox.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    textbox.BackgroundTransparency = 0.4
+    textbox.BorderSizePixel = 0
+    textbox.PlaceholderText = placeholder
+    textbox.Text = ""
+    textbox.TextColor3 = Color3.fromRGB(220, 220, 220)
+    textbox.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+    textbox.Font = Enum.Font.Gotham
+    textbox.TextSize = 12
+    textbox.ZIndex = 4
+    textbox.Parent = tab.Content
+
+    local boxCorner = Instance.new("UICorner")
+    boxCorner.CornerRadius = UDim.new(0, 6)
+    boxCorner.Parent = textbox
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 10)
+    padding.Parent = textbox
 
     textbox.FocusLost:Connect(function()
-        container.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
         callback(textbox.Text)
     end)
-
-    return textbox
 end
 
-function UI:Destroy()
-    _G.BloodyBloxLoaded = false
-
+function MainUI:Destroy()
     -- Disable all features
-    BloodyBlox.Settings.FastFarm = false
+    BloodyBlox.Settings.FastWeight = false
     BloodyBlox.Settings.AutoWeight = false
     BloodyBlox.Settings.AutoRebirth = false
     BloodyBlox.Settings.Fly = false
     BloodyBlox.Settings.Noclip = false
     BloodyBlox.Settings.InfiniteJump = false
     BloodyBlox.Settings.GodMode = false
+    BloodyBlox.Settings.InfShield = false
 
     -- Disconnect all connections
     for _, connection in ipairs(BloodyBlox.Connections) do
@@ -687,570 +1374,53 @@ function UI:Destroy()
 
     -- Destroy UI
     self.ScreenGui:Destroy()
+    _G.BloodyBloxLoaded = nil
 
     print("[BloodyBlox] Exited successfully")
 end
 
 print("[BloodyBlox] UI module loaded")
 
--- ============ FARM FUNCTIONS (FIXED FOR MUSCLE LEGENDS) ============
+-- ============ CREATE UI AND TABS ============
 
-local Farm = {}
+task.wait(math.random(300, 700) / 1000)
 
-function Farm:FastFarm()
-    if self.FastFarmRunning then
-        BloodyBlox:Log("FastFarm", "Already running", "warn")
-        return
-    end
+local MainUI = MainUI:Create()
 
-    self.FastFarmRunning = true
-    BloodyBlox:Log("FastFarm", "Started", "info")
-
-    task.spawn(function()
-        while BloodyBlox.Settings.FastFarm do
-            task.wait(0.1)  -- Slower loop - won't freeze UI
-
-            if not BloodyBlox.Settings.FastFarm then break end
-
-            pcall(function()
-                -- Method 1: Direct mouse click simulation (reduced)
-                local VIM = game:GetService("VirtualInputManager")
-                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                task.wait(0.01)
-                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-
-                -- Method 2: Fire RemoteEvents (limited to 3 per cycle)
-                local RS = game:GetService("ReplicatedStorage")
-                local eventCount = 0
-                for _, obj in pairs(RS:GetChildren()) do
-                    if obj:IsA("RemoteEvent") and eventCount < 3 then
-                        pcall(function() obj:FireServer() end)
-                        pcall(function() obj:FireServer("click") end)
-                        pcall(function() obj:FireServer(true) end)
-                        eventCount = eventCount + 1
-                    end
-                end
-            end)
-        end
-
-        self.FastFarmRunning = false
-        BloodyBlox:Log("FastFarm", "Stopped", "info")
-    end)
-end
-
-function Farm:AutoWeight()
-    BloodyBlox:Log("AutoWeight", "Started", "info")
-
-    while BloodyBlox.Settings.AutoWeight do
-        task.wait(0.5)
-
-        pcall(function()
-            local RS = game:GetService("ReplicatedStorage")
-
-            -- Try all remotes with different weight parameters
-            for _, obj in pairs(RS:GetDescendants()) do
-                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                    pcall(function()
-                        if obj:IsA("RemoteEvent") then
-                            obj:FireServer("weight")
-                            obj:FireServer("Heavy")
-                            obj:FireServer("MAX")
-                            obj:FireServer(999999)
-                        else
-                            obj:InvokeServer("weight")
-                            obj:InvokeServer("Heavy")
-                        end
-                    end)
-                end
-            end
-        end)
-    end
-
-    BloodyBlox:Log("AutoWeight", "Stopped", "info")
-end
-
-function Farm:AutoRebirth()
-    BloodyBlox:Log("AutoRebirth", "Started", "info")
-
-    while BloodyBlox.Settings.AutoRebirth do
-        task.wait(1)
-
-        pcall(function()
-            local RS = game:GetService("ReplicatedStorage")
-
-            -- Try all remotes for rebirth
-            for _, obj in pairs(RS:GetDescendants()) do
-                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                    pcall(function()
-                        if obj:IsA("RemoteEvent") then
-                            obj:FireServer("rebirth")
-                            obj:FireServer("Rebirth")
-                            obj:FireServer("prestige")
-                            obj:FireServer()
-                        else
-                            obj:InvokeServer("rebirth")
-                            obj:InvokeServer()
-                        end
-                    end)
-                end
-            end
-
-            BloodyBlox:Log("AutoRebirth", "Attempted rebirth", "info")
-        end)
-    end
-
-    BloodyBlox:Log("AutoRebirth", "Stopped", "info")
-end
-
-print("[BloodyBlox] Farm module loaded")
-
--- ============ PLAYER MODIFICATIONS ============
-
-local Player = {}
-
-function Player:SetWalkSpeed(speed)
-    local humanoid = BloodyBlox:GetHumanoid()
-    if humanoid then
-        humanoid.WalkSpeed = speed
-    end
-end
-
-function Player:SetJumpPower(power)
-    local humanoid = BloodyBlox:GetHumanoid()
-    if humanoid then
-        humanoid.JumpPower = power
-    end
-end
-
-function Player:ToggleFly(enabled)
-    if enabled then
-        -- Create BodyVelocity for no-fall fly
-        local bodyVel = Instance.new("BodyVelocity")
-        bodyVel.Name = "FlyVelocity"
-        bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-        bodyVel.Velocity = Vector3.new(0, 0, 0)
-
-        local flyConnection
-        flyConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            if not BloodyBlox.Settings.Fly then
-                if bodyVel and bodyVel.Parent then
-                    bodyVel:Destroy()
-                end
-                flyConnection:Disconnect()
-                return
-            end
-
-            local hrp = BloodyBlox:GetHumanoidRootPart()
-            if hrp then
-                -- Attach BodyVelocity if not attached
-                if not bodyVel.Parent then
-                    bodyVel.Parent = hrp
-                end
-
-                local UIS = game:GetService("UserInputService")
-                local velocity = Vector3.new(0, 0, 0)
-                local speed = 4  -- Faster fly speed
-
-                if UIS:IsKeyDown(Enum.KeyCode.W) then velocity = velocity + (workspace.CurrentCamera.CFrame.LookVector * speed) end
-                if UIS:IsKeyDown(Enum.KeyCode.S) then velocity = velocity - (workspace.CurrentCamera.CFrame.LookVector * speed) end
-                if UIS:IsKeyDown(Enum.KeyCode.A) then velocity = velocity - (workspace.CurrentCamera.CFrame.RightVector * speed) end
-                if UIS:IsKeyDown(Enum.KeyCode.D) then velocity = velocity + (workspace.CurrentCamera.CFrame.RightVector * speed) end
-                if UIS:IsKeyDown(Enum.KeyCode.Space) then velocity = velocity + Vector3.new(0, speed, 0) end
-                if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then velocity = velocity - Vector3.new(0, speed, 0) end
-
-                bodyVel.Velocity = velocity * 25  -- Much faster
-            end
-        end)
-
-        table.insert(BloodyBlox.Connections, flyConnection)
-    end
-end
-
-function Player:ToggleNoclip(enabled)
-    if enabled then
-        local noclipConnection
-        noclipConnection = game:GetService("RunService").Stepped:Connect(function()
-            if not BloodyBlox.Settings.Noclip then
-                noclipConnection:Disconnect()
-                return
-            end
-
-            local char = BloodyBlox:GetCharacter()
-            if char then
-                for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-
-        table.insert(BloodyBlox.Connections, noclipConnection)
-    end
-end
-
-function Player:ToggleInfiniteJump(enabled)
-    if enabled then
-        local infJumpConnection
-        infJumpConnection = game:GetService("UserInputService").JumpRequest:Connect(function()
-            if not BloodyBlox.Settings.InfiniteJump then
-                infJumpConnection:Disconnect()
-                return
-            end
-
-            local humanoid = BloodyBlox:GetHumanoid()
-            if humanoid then
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-        end)
-
-        table.insert(BloodyBlox.Connections, infJumpConnection)
-    end
-end
-
-function Player:ToggleAntiAim(enabled)
-    if self.AntiAimConnection then
-        self.AntiAimConnection:Disconnect()
-        self.AntiAimConnection = nil
-    end
-
-    if enabled then
-        self.AntiAimConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            if not BloodyBlox.Settings.AntiAim then
-                if self.AntiAimConnection then
-                    self.AntiAimConnection:Disconnect()
-                    self.AntiAimConnection = nil
-                end
-                return
-            end
-
-            local hrp = BloodyBlox:GetHumanoidRootPart()
-            if hrp then
-                -- Simple Y-axis spin (classic AntiAim)
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(30), 0)
-            end
-        end)
-
-        table.insert(BloodyBlox.Connections, self.AntiAimConnection)
-        BloodyBlox:Log("Player", "AntiAim: Classic Spin Active", "info")
-    else
-        BloodyBlox:Log("Player", "AntiAim: OFF", "info")
-    end
-end
-
-function Player:ToggleGodMode(enabled)
-    local humanoid = BloodyBlox:GetHumanoid()
-    local character = BloodyBlox:GetCharacter()
-
-    if not humanoid or not character then return end
-
-    if self.GodModeConnection then
-        self.GodModeConnection:Disconnect()
-        self.GodModeConnection = nil
-    end
-
-    if enabled then
-        -- Set infinite health
-        humanoid.MaxHealth = math.huge
-        humanoid.Health = math.huge
-
-        -- Make character invulnerable through ForceField
-        local forceField = Instance.new("ForceField")
-        forceField.Visible = false
-        forceField.Parent = character
-
-        -- Disable all damage scripts
-        for _, v in pairs(character:GetDescendants()) do
-            if v:IsA("Script") or v:IsA("LocalScript") then
-                v.Disabled = true
-            end
-        end
-
-        -- Constant health restore every frame
-        self.GodModeConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            if not BloodyBlox.Settings.GodMode then
-                if self.GodModeConnection then
-                    self.GodModeConnection:Disconnect()
-                    self.GodModeConnection = nil
-                end
-                return
-            end
-
-            if humanoid then
-                humanoid.Health = math.huge
-                humanoid.MaxHealth = math.huge
-
-                -- Remove any debuffs
-                for _, effect in pairs(humanoid:GetChildren()) do
-                    if effect:IsA("NumberValue") or effect:IsA("BoolValue") then
-                        effect:Destroy()
-                    end
-                end
-            end
-        end)
-
-        -- Block all damage events
-        for _, v in pairs(character:GetDescendants()) do
-            if v:IsA("Humanoid") then
-                v.HealthChanged:Connect(function()
-                    if BloodyBlox.Settings.GodMode and v.Health < math.huge then
-                        v.Health = math.huge
-                    end
-                end)
-            end
-        end
-
-        table.insert(BloodyBlox.Connections, self.GodModeConnection)
-        BloodyBlox:Log("Player", "God Mode: INVINCIBLE - ForceField Active", "info")
-    else
-        -- Remove ForceField
-        for _, v in pairs(character:GetChildren()) do
-            if v:IsA("ForceField") then
-                v:Destroy()
-            end
-        end
-
-        humanoid.MaxHealth = 100
-        humanoid.Health = 100
-        BloodyBlox:Log("Player", "God Mode: OFF", "info")
-    end
-end
-
--- ============ AIMBOT SYSTEM ============
-
-local Combat = {}
-
-function Combat:GetClosestPlayer()
-    local camera = workspace.CurrentCamera
-    local localPlayer = BloodyBlox.Player
-    local closestPlayer = nil
-    local shortestDistance = BloodyBlox.Settings.AimbotFOV
-
-    for _, player in pairs(game:GetService("Players"):GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-            local head = player.Character:FindFirstChild("Head")
-
-            if hrp and head then
-                local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
-
-                if onScreen then
-                    local mousePos = game:GetService("UserInputService"):GetMouseLocation()
-                    local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-
-                    if distance < shortestDistance then
-                        shortestDistance = distance
-                        closestPlayer = player
-                    end
-                end
-            end
-        end
-    end
-
-    return closestPlayer
-end
-
-function Combat:ToggleAimbot(enabled)
-    if self.AimbotConnection then
-        self.AimbotConnection:Disconnect()
-        self.AimbotConnection = nil
-    end
-
-    if enabled then
-        self.AimbotConnection = game:GetService("RunService").RenderStepped:Connect(function()
-            if not BloodyBlox.Settings.Aimbot then
-                if self.AimbotConnection then
-                    self.AimbotConnection:Disconnect()
-                    self.AimbotConnection = nil
-                end
-                return
-            end
-
-            local target = self:GetClosestPlayer()
-            if target and target.Character then
-                local head = target.Character:FindFirstChild("Head")
-                if head then
-                    local camera = workspace.CurrentCamera
-                    camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
-                end
-            end
-        end)
-
-        table.insert(BloodyBlox.Connections, self.AimbotConnection)
-        BloodyBlox:Log("Combat", "Aimbot: LOCKED ON", "info")
-    else
-        BloodyBlox:Log("Combat", "Aimbot: OFF", "info")
-    end
-end
-
-function Combat:ToggleKillAura(enabled)
-    if self.KillAuraConnection then
-        self.KillAuraConnection:Disconnect()
-        self.KillAuraConnection = nil
-    end
-
-    if enabled then
-        local lastAttackTime = 0
-        local attackCooldown = 0.5  -- Attack every 0.5 seconds (not every frame)
-
-        self.KillAuraConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            if not BloodyBlox.Settings.KillAura then
-                if self.KillAuraConnection then
-                    self.KillAuraConnection:Disconnect()
-                    self.KillAuraConnection = nil
-                end
-                return
-            end
-
-            local currentTime = tick()
-            if currentTime - lastAttackTime < attackCooldown then
-                return  -- Skip this frame, cooldown not ready
-            end
-
-            local localPlayer = BloodyBlox.Player
-            local character = BloodyBlox:GetCharacter()
-            local hrp = BloodyBlox:GetHumanoidRootPart()
-
-            if not hrp then return end
-
-            -- Attack all players in range (SILENT - no teleport, no spam)
-            for _, player in pairs(game:GetService("Players"):GetPlayers()) do
-                if player ~= localPlayer and player.Character then
-                    local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
-                    local targetHumanoid = player.Character:FindFirstChild("Humanoid")
-
-                    if targetHRP and targetHumanoid then
-                        local distance = (hrp.Position - targetHRP.Position).Magnitude
-
-                        if distance <= BloodyBlox.Settings.KillAuraRange then
-                            -- SILENT KILL - only remote events, no teleport
-                            pcall(function()
-                                -- Method 1: Direct humanoid damage
-                                targetHumanoid.Health = 0
-
-                                -- Method 2: Fire RemoteEvents with kill parameters (limited, not spam)
-                                local RS = game:GetService("ReplicatedStorage")
-                                local eventCount = 0
-                                for _, obj in pairs(RS:GetChildren()) do
-                                    if obj:IsA("RemoteEvent") and eventCount < 5 then  -- Max 5 events per attack
-                                        pcall(function() obj:FireServer("damage", player) end)
-                                        pcall(function() obj:FireServer("kill", player) end)
-                                        pcall(function() obj:FireServer("attack", player) end)
-                                        eventCount = eventCount + 1
-                                    end
-                                end
-                            end)
-
-                            lastAttackTime = currentTime
-                            break  -- Attack one player per cycle, not all at once
-                        end
-                    end
-                end
-            end
-        end)
-
-        table.insert(BloodyBlox.Connections, self.KillAuraConnection)
-        BloodyBlox:Log("Combat", "Kill Aura: SILENT MODE (0.5s cooldown, no teleport)", "warn")
-    else
-        BloodyBlox:Log("Combat", "Kill Aura: OFF", "info")
-    end
-end
-
-print("[BloodyBlox] Combat module loaded")
-print("[BloodyBlox] Player module loaded")
-
--- ============ CONFIG SYSTEM ============
-
-local Config = {}
-
-function Config:Save(configName)
-    if configName == "" then return end
-
-    local configData = {
-        Settings = BloodyBlox.Settings,
-        Version = BloodyBlox.Version
-    }
-
-    pcall(function()
-        writefile("BloodyBlox_" .. configName .. ".json", game:GetService("HttpService"):JSONEncode(configData))
-        BloodyBlox:Log("Config", "Saved: " .. configName, "info")
-    end)
-end
-
-function Config:Load(configName)
-    if configName == "" then return end
-
-    pcall(function()
-        local configData = game:GetService("HttpService"):JSONDecode(readfile("BloodyBlox_" .. configName .. ".json"))
-        BloodyBlox.Settings = configData.Settings
-        BloodyBlox:Log("Config", "Loaded: " .. configName, "info")
-    end)
-end
-
-function Config:Delete(configName)
-    if configName == "" then return end
-
-    pcall(function()
-        delfile("BloodyBlox_" .. configName .. ".json")
-        BloodyBlox:Log("Config", "Deleted: " .. configName, "info")
-    end)
-end
-
-print("[BloodyBlox] Config module loaded")
-
--- ============ CREATE MODERN UI ============
-
-print("[BloodyBlox] Building modern interface...")
-
-local MainUI = UI:Create()
-
--- Main Tab
-local MainTab = MainUI:CreateTab("Main")
-MainUI:AddLabel(MainTab, "BLOODYBLOX v" .. BloodyBlox.Version)
-MainUI:AddLabel(MainTab, "Muscle Legends Exploit")
-MainUI:AddLabel(MainTab, "")
-MainUI:AddLabel(MainTab, "✓ Anti-AFK: Auto-Enabled")
-MainUI:AddLabel(MainTab, "✓ FPS Unlock: Auto-Enabled")
-MainUI:AddLabel(MainTab, "")
-MainUI:AddLabel(MainTab, "Press INSERT to toggle menu")
-
--- Farm Tab
-local FarmTab = MainUI:CreateTab("Farm")
-MainUI:AddToggle(FarmTab, "Fast Farm", false, function(value)
-    BloodyBlox.Settings.FastFarm = value
-    if value then
-        task.spawn(function() Farm:FastFarm() end)
-    end
+-- Weight Training Tab
+local WeightTab = MainUI:CreateTab("Weight Training")
+MainUI:AddToggle(WeightTab, "Fast Weight (No Delay)", false, function(value)
+    BloodyBlox.Settings.FastWeight = value
+    WeightTraining:ToggleFastWeight(value)
 end)
-MainUI:AddToggle(FarmTab, "Auto Weight", false, function(value)
+MainUI:AddToggle(WeightTab, "Auto Weight (Auto Lift)", false, function(value)
     BloodyBlox.Settings.AutoWeight = value
-    if value then
-        task.spawn(function() Farm:AutoWeight() end)
-    end
+    WeightTraining:ToggleAutoWeight(value)
 end)
-
--- Rebirth Tab
-local RebirthTab = MainUI:CreateTab("Rebirth")
-MainUI:AddToggle(RebirthTab, "Auto Rebirth", false, function(value)
+MainUI:AddToggle(WeightTab, "Auto Rebirth", false, function(value)
     BloodyBlox.Settings.AutoRebirth = value
-    if value then
-        task.spawn(function() Farm:AutoRebirth() end)
-    end
+    WeightTraining:ToggleAutoRebirth(value)
 end)
-MainUI:AddLabel(RebirthTab, "")
-MainUI:AddLabel(RebirthTab, "Auto rebirth will trigger when available")
+MainUI:AddToggle(WeightTab, "Fast Rebirth (Skip Anim)", false, function(value)
+    BloodyBlox.Settings.FastRebirth = value
+    WeightTraining:ToggleFastRebirth(value)
+end)
+MainUI:AddLabel(WeightTab, "")
+MainUI:AddLabel(WeightTab, "Fast Weight: Removes lift delay, fast reps")
+MainUI:AddLabel(WeightTab, "Auto Weight: Automatically picks up weight")
+MainUI:AddLabel(WeightTab, "Fast Rebirth: Skips rebirth animation")
 
 -- Player Tab
 local PlayerTab = MainUI:CreateTab("Player")
-MainUI:AddSlider(PlayerTab, "Walk Speed", 16, 200, 16, function(value)
+MainUI:AddSlider(PlayerTab, "WalkSpeed", 16, 200, 16, function(value)
     BloodyBlox.Settings.WalkSpeed = value
     Player:SetWalkSpeed(value)
 end)
-MainUI:AddSlider(PlayerTab, "Jump Power", 50, 200, 50, function(value)
+MainUI:AddSlider(PlayerTab, "JumpPower", 50, 300, 50, function(value)
     BloodyBlox.Settings.JumpPower = value
     Player:SetJumpPower(value)
 end)
-MainUI:AddToggle(PlayerTab, "Fly (WASD + Space/Shift)", false, function(value)
+MainUI:AddToggle(PlayerTab, "Fly", false, function(value)
     BloodyBlox.Settings.Fly = value
     Player:ToggleFly(value)
 end)
@@ -1262,21 +1432,28 @@ MainUI:AddToggle(PlayerTab, "Infinite Jump", false, function(value)
     BloodyBlox.Settings.InfiniteJump = value
     Player:ToggleInfiniteJump(value)
 end)
-MainUI:AddToggle(PlayerTab, "God Mode", false, function(value)
+MainUI:AddToggle(PlayerTab, "God Mode (TRUE)", false, function(value)
     BloodyBlox.Settings.GodMode = value
     Player:ToggleGodMode(value)
 end)
+MainUI:AddToggle(PlayerTab, "Infinite Shield", false, function(value)
+    BloodyBlox.Settings.InfShield = value
+    Player:ToggleInfShield(value)
+end)
+MainUI:AddLabel(PlayerTab, "")
+MainUI:AddLabel(PlayerTab, "God Mode: Health + Durability + ForceField")
+MainUI:AddLabel(PlayerTab, "Inf Shield: Shield never expires after respawn")
 
 -- Misc Tab
 local MiscTab = MainUI:CreateTab("Misc")
 
-MainUI:AddToggle(MiscTab, "Anti-Aim (INSANE Spin)", false, function(value)
+MainUI:AddToggle(MiscTab, "Anti-Aim (Classic Spin)", false, function(value)
     BloodyBlox.Settings.AntiAim = value
     Player:ToggleAntiAim(value)
 end)
 MainUI:AddLabel(MiscTab, "")
-MainUI:AddLabel(MiscTab, "Anti-Aim: Multi-axis insane rotation")
-MainUI:AddLabel(MiscTab, "Movement still works normally")
+MainUI:AddLabel(MiscTab, "Anti-Aim: Simple Y-axis rotation")
+MainUI:AddLabel(MiscTab, "Movement works normally")
 
 MainUI:AddLabel(MiscTab, "")
 MainUI:AddLabel(MiscTab, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -1308,8 +1485,7 @@ MainUI:AddSlider(MiscTab, "Kill Aura Range", 10, 200, BloodyBlox.Settings.KillAu
 end)
 
 MainUI:AddLabel(MiscTab, "")
-MainUI:AddLabel(MiscTab, "Kill Aura: Attacks ALL players in range")
-MainUI:AddLabel(MiscTab, "WARNING: Very aggressive, USE CAREFULLY")
+MainUI:AddLabel(MiscTab, "Kill Aura: Attacks all players in range (silent)")
 
 -- Config Tab
 local ConfigTab = MainUI:CreateTab("Config")
@@ -1330,31 +1506,41 @@ end)
 
 -- Logs Tab
 local LogsTab = MainUI:CreateTab("Logs")
-MainUI:AddLabel(LogsTab, "Recent Logs (Last 20)")
-MainUI:AddButton(LogsTab, "Refresh Logs", function()
-    local logCount = math.min(#BloodyBlox.Logs, 20)
-    print("\n========== BloodyBlox Logs ==========")
-    for i = math.max(1, #BloodyBlox.Logs - logCount + 1), #BloodyBlox.Logs do
-        local log = BloodyBlox.Logs[i]
-        print(string.format("[%s][%s] %s", log.time, log.category, log.message))
+MainUI:AddLabel(LogsTab, "Recent Logs (Last 50):")
+MainUI:AddLabel(LogsTab, "")
+
+task.spawn(function()
+    while task.wait(2) do
+        if LogsTab.Content then
+            -- Clear old logs
+            for _, child in pairs(LogsTab.Content:GetChildren()) do
+                if child:IsA("TextLabel") and not child.Text:find("Recent Logs") then
+                    child:Destroy()
+                end
+            end
+
+            -- Add new logs
+            for i = math.max(1, #BloodyBlox.Logs - 15), #BloodyBlox.Logs do
+                local log = BloodyBlox.Logs[i]
+                if log then
+                    MainUI:AddLabel(LogsTab, string.format("[%s][%s] %s", log.time, log.category, log.message))
+                end
+            end
+        end
     end
-    print("=====================================\n")
-end)
-MainUI:AddButton(LogsTab, "Clear Logs", function()
-    BloodyBlox.Logs = {}
-    BloodyBlox:Log("Logs", "Cleared all logs", "info")
 end)
 
 -- Settings Tab
 local SettingsTab = MainUI:CreateTab("Settings")
 MainUI:AddButton(SettingsTab, "Disable All Features", function()
-    BloodyBlox.Settings.FastFarm = false
+    BloodyBlox.Settings.FastWeight = false
     BloodyBlox.Settings.AutoWeight = false
     BloodyBlox.Settings.AutoRebirth = false
     BloodyBlox.Settings.Fly = false
     BloodyBlox.Settings.Noclip = false
     BloodyBlox.Settings.InfiniteJump = false
     BloodyBlox.Settings.GodMode = false
+    BloodyBlox.Settings.InfShield = false
 
     for _, connection in ipairs(BloodyBlox.Connections) do
         pcall(function() connection:Disconnect() end)
@@ -1366,44 +1552,26 @@ end)
 
 MainUI:AddButton(SettingsTab, "EXIT CHEAT", function()
     MainUI:Destroy()
-    _G.BloodyBloxLoaded = nil
-    BloodyBlox:Log("Settings", "Cheat closed completely", "warn")
 end)
 
 MainUI:AddLabel(SettingsTab, "")
 MainUI:AddLabel(SettingsTab, "Version: " .. BloodyBlox.Version)
 MainUI:AddLabel(SettingsTab, "Anti-Detection: ACTIVE")
+MainUI:AddLabel(SettingsTab, "FPS Unlock: AUTO-ENABLED")
+MainUI:AddLabel(SettingsTab, "Anti-AFK: AUTO-ENABLED")
 
-print("[BloodyBlox] All tabs created")
-
--- ============ MENU TOGGLE ============
-
-game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-
-    if input.KeyCode == Enum.KeyCode.Insert then
-        MainUI.ScreenGui.Enabled = not MainUI.ScreenGui.Enabled
-        BloodyBlox.MenuOpen = MainUI.ScreenGui.Enabled
+-- Toggle menu with Insert key
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Insert then
+        BloodyBlox.MenuOpen = not BloodyBlox.MenuOpen
+        MainUI.ScreenGui.Enabled = BloodyBlox.MenuOpen
     end
 end)
 
--- Character respawn handler
-BloodyBlox.Player.CharacterAdded:Connect(function(character)
-    task.wait(1)
-
-    if BloodyBlox.Settings.WalkSpeed ~= 16 then
-        Player:SetWalkSpeed(BloodyBlox.Settings.WalkSpeed)
-    end
-    if BloodyBlox.Settings.JumpPower ~= 50 then
-        Player:SetJumpPower(BloodyBlox.Settings.JumpPower)
-    end
-    if BloodyBlox.Settings.GodMode then
-        Player:ToggleGodMode(true)
-    end
-end)
-
-print("[BloodyBlox] Script loaded successfully!")
-print("[BloodyBlox] Press INSERT to open menu")
-print("[BloodyBlox] Anti-AFK and FPS Unlock are AUTO-ENABLED")
-
-return BloodyBlox
+BloodyBlox:Log("System", "BloodyBlox v4.0.0 loaded successfully!", "info")
+BloodyBlox:Log("System", "Press INSERT to toggle menu", "info")
+print("[BloodyBlox] ========================================")
+print("[BloodyBlox] v4.0.0 LOADED - Press INSERT to open")
+print("[BloodyBlox] Complete Muscle Legends rewrite")
+print("[BloodyBlox] All functions remade for Muscle Legends")
+print("[BloodyBlox] ========================================")
