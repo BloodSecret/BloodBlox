@@ -40,7 +40,7 @@ task.wait(0.3)
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "3.5.0",
+    Version = "3.5.1",
     MenuOpen = false,
     Player = game:GetService("Players").LocalPlayer,
     Settings = {
@@ -904,7 +904,6 @@ function Player:ToggleAntiAim(enabled)
     end
 
     if enabled then
-        local spinSpeed = 0
         self.AntiAimConnection = game:GetService("RunService").Heartbeat:Connect(function()
             if not BloodyBlox.Settings.AntiAim then
                 if self.AntiAimConnection then
@@ -916,28 +915,13 @@ function Player:ToggleAntiAim(enabled)
 
             local hrp = BloodyBlox:GetHumanoidRootPart()
             if hrp then
-                spinSpeed = spinSpeed + 50  -- Accelerating spin
-
-                -- INSANE multi-axis rotation
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(
-                    math.rad(math.sin(spinSpeed) * 180),  -- X axis (pitch)
-                    math.rad(spinSpeed),                    -- Y axis (yaw) - main spin
-                    math.rad(math.cos(spinSpeed) * 180)    -- Z axis (roll)
-                )
-
-                -- Random velocity changes for extra chaos
-                if hrp:FindFirstChild("BodyVelocity") then
-                    hrp.BodyVelocity.Velocity = Vector3.new(
-                        math.random(-10, 10),
-                        math.random(-10, 10),
-                        math.random(-10, 10)
-                    )
-                end
+                -- Simple Y-axis spin (classic AntiAim)
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(30), 0)
             end
         end)
 
         table.insert(BloodyBlox.Connections, self.AntiAimConnection)
-        BloodyBlox:Log("Player", "AntiAim: INSANE SPIN MODE", "info")
+        BloodyBlox:Log("Player", "AntiAim: Classic Spin Active", "info")
     else
         BloodyBlox:Log("Player", "AntiAim: OFF", "info")
     end
@@ -1095,6 +1079,9 @@ function Combat:ToggleKillAura(enabled)
     end
 
     if enabled then
+        local lastAttackTime = 0
+        local attackCooldown = 0.5  -- Attack every 0.5 seconds (not every frame)
+
         self.KillAuraConnection = game:GetService("RunService").Heartbeat:Connect(function()
             if not BloodyBlox.Settings.KillAura then
                 if self.KillAuraConnection then
@@ -1104,13 +1091,18 @@ function Combat:ToggleKillAura(enabled)
                 return
             end
 
+            local currentTime = tick()
+            if currentTime - lastAttackTime < attackCooldown then
+                return  -- Skip this frame, cooldown not ready
+            end
+
             local localPlayer = BloodyBlox.Player
             local character = BloodyBlox:GetCharacter()
             local hrp = BloodyBlox:GetHumanoidRootPart()
 
             if not hrp then return end
 
-            -- Attack all players in range
+            -- Attack all players in range (SILENT - no teleport, no spam)
             for _, player in pairs(game:GetService("Players"):GetPlayers()) do
                 if player ~= localPlayer and player.Character then
                     local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
@@ -1120,35 +1112,38 @@ function Combat:ToggleKillAura(enabled)
                         local distance = (hrp.Position - targetHRP.Position).Magnitude
 
                         if distance <= BloodyBlox.Settings.KillAuraRange then
-                            -- Try multiple damage methods
+                            -- SILENT KILL - only remote events, no teleport
                             pcall(function()
                                 -- Method 1: Direct humanoid damage
                                 targetHumanoid.Health = 0
 
-                                -- Method 2: Fire all RemoteEvents with kill parameters
+                                -- Method 2: Fire RemoteEvents with kill parameters (limited, not spam)
                                 local RS = game:GetService("ReplicatedStorage")
+                                local eventCount = 0
                                 for _, obj in pairs(RS:GetChildren()) do
-                                    if obj:IsA("RemoteEvent") then
+                                    if obj:IsA("RemoteEvent") and eventCount < 5 then  -- Max 5 events per attack
                                         pcall(function() obj:FireServer("damage", player) end)
                                         pcall(function() obj:FireServer("kill", player) end)
                                         pcall(function() obj:FireServer("attack", player) end)
-                                        pcall(function() obj:FireServer(player) end)
-                                        pcall(function() obj:FireServer(targetHumanoid) end)
+                                        eventCount = eventCount + 1
                                     end
                                 end
-
-                                -- Method 3: Teleport into them rapidly (collision damage)
-                                hrp.CFrame = targetHRP.CFrame
-
-                                -- Method 4: Fire click at their position
-                                local VIM = game:GetService("VirtualInputManager")
-                                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
                             end)
+
+                            lastAttackTime = currentTime
+                            break  -- Attack one player per cycle, not all at once
                         end
                     end
                 end
             end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.KillAuraConnection)
+        BloodyBlox:Log("Combat", "Kill Aura: SILENT MODE (0.5s cooldown, no teleport)", "warn")
+    else
+        BloodyBlox:Log("Combat", "Kill Aura: OFF", "info")
+    end
+end
         end)
 
         table.insert(BloodyBlox.Connections, self.KillAuraConnection)
