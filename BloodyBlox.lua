@@ -1725,3 +1725,4 @@ print("[BloodyBlox] v4.0.0 LOADED - Press INSERT to open")
 print("[BloodyBlox] Complete Muscle Legends rewrite")
 print("[BloodyBlox] All functions remade for Muscle Legends")
 print("[BloodyBlox] ========================================")
+ 
