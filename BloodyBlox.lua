@@ -50,7 +50,7 @@ local TweenService = game:GetService("TweenService")
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "4.0.1",
+    Version = "4.0.2",
     MenuOpen = false,
     Player = Players.LocalPlayer,
     Settings = {
@@ -162,20 +162,56 @@ function MuscleLegends:EquipWeight()
     return false
 end
 
--- Find Durability value (for God Mode)
-function MuscleLegends:GetDurability()
-    local char = BloodyBlox:GetCharacter()
-    if not char then return nil end
+-- Find player stats (Strength, Durability, etc.)
+function MuscleLegends:GetPlayerStats()
+    local player = BloodyBlox.Player
+    local stats = {}
 
-    -- Check multiple possible locations
-    local humanoid = char:FindFirstChild("Humanoid")
-    if humanoid then
-        local durability = humanoid:FindFirstChild("Durability") or humanoid:FindFirstChild("Defense")
-        if durability then return durability end
+    -- Check leaderstats
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        for _, stat in pairs(leaderstats:GetChildren()) do
+            if stat:IsA("NumberValue") or stat:IsA("IntValue") then
+                stats[stat.Name] = stat
+            end
+        end
     end
 
-    -- Check character root
-    return char:FindFirstChild("Durability") or char:FindFirstChild("Defense")
+    -- Check PlayerStats folder
+    local playerStats = player:FindFirstChild("PlayerStats") or player:FindFirstChild("Stats")
+    if playerStats then
+        for _, stat in pairs(playerStats:GetChildren()) do
+            if stat:IsA("NumberValue") or stat:IsA("IntValue") then
+                stats[stat.Name] = stat
+            end
+        end
+    end
+
+    return stats
+end
+
+-- Find Strength value specifically
+function MuscleLegends:GetStrength()
+    local stats = self:GetPlayerStats()
+
+    -- Check common strength names
+    return stats["Strength"] or
+           stats["Power"] or
+           stats["Muscle"] or
+           stats["Force"] or
+           stats["STR"]
+end
+
+-- Find Durability value (for God Mode)
+function MuscleLegends:GetDurability()
+    local stats = self:GetPlayerStats()
+
+    -- Check common durability names
+    return stats["Durability"] or
+           stats["Defense"] or
+           stats["Armor"] or
+           stats["DEF"] or
+           stats["Health"]
 end
 
 -- Find Shield object (for Inf Shield)
@@ -564,7 +600,7 @@ function Player:ToggleAntiAim(enabled)
     end
 end
 
--- God Mode: AGGRESSIVE APPROACH - All possible methods
+-- God Mode: Muscle Legends approach - Max all player stats
 function Player:ToggleGodMode(enabled)
     local humanoid = BloodyBlox:GetHumanoid()
     local character = BloodyBlox:GetCharacter()
@@ -577,43 +613,27 @@ function Player:ToggleGodMode(enabled)
     end
 
     if enabled then
-        BloodyBlox:Log("GodMode", "Applying ALL protection methods...", "warn")
+        BloodyBlox:Log("GodMode", "Maxing ALL player stats...", "warn")
 
         -- Method 1: Infinite Health
         humanoid.MaxHealth = math.huge
         humanoid.Health = math.huge
 
-        -- Method 2: Remove ALL damage scripts in character
-        for _, obj in pairs(character:GetDescendants()) do
-            if obj:IsA("Script") or obj:IsA("LocalScript") then
-                obj.Disabled = true
+        -- Method 2: Max ALL player stats (Durability, Defense, Armor, etc.)
+        local stats = MuscleLegends:GetPlayerStats()
+        for name, stat in pairs(stats) do
+            if name:lower():find("durability") or name:lower():find("defense") or name:lower():find("armor") or name:lower():find("health") then
+                stat.Value = math.huge
+                BloodyBlox:Log("GodMode", "Set " .. name .. " = INFINITE", "info")
             end
         end
 
-        -- Method 3: Find and max ALL NumberValues (Durability/Defense/Armor)
-        for _, obj in pairs(character:GetDescendants()) do
-            if obj:IsA("NumberValue") then
-                local name = obj.Name:lower()
-                if name:find("durability") or name:find("defense") or name:find("armor") or name:find("health") then
-                    obj.Value = math.huge
-                    BloodyBlox:Log("GodMode", "Set " .. obj.Name .. " to INFINITE", "info")
-                end
-            end
-        end
-
-        -- Method 4: Invisible ForceField
+        -- Method 3: ForceField
         local forceField = Instance.new("ForceField")
         forceField.Visible = false
         forceField.Parent = character
 
-        -- Method 5: Make all body parts indestructible
-        for _, part in pairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false  -- No collision damage
-            end
-        end
-
-        -- Method 6: Constant restore loop
+        -- Constant restore loop
         self.GodModeConnection = RunService.Heartbeat:Connect(function()
             if not BloodyBlox.Settings.GodMode then
                 if self.GodModeConnection then
@@ -623,46 +643,24 @@ function Player:ToggleGodMode(enabled)
                 return
             end
 
-            local char = BloodyBlox:GetCharacter()
             local hum = BloodyBlox:GetHumanoid()
-
             if hum then
                 hum.Health = math.huge
                 hum.MaxHealth = math.huge
             end
 
-            if char then
-                -- Restore ALL NumberValues every frame
-                for _, obj in pairs(char:GetDescendants()) do
-                    if obj:IsA("NumberValue") then
-                        local name = obj.Name:lower()
-                        if name:find("durability") or name:find("defense") or name:find("armor") or name:find("health") then
-                            obj.Value = math.huge
-                        end
-                    end
+            -- Keep all defensive stats maxed
+            local stats = MuscleLegends:GetPlayerStats()
+            for name, stat in pairs(stats) do
+                if name:lower():find("durability") or name:lower():find("defense") or name:lower():find("armor") or name:lower():find("health") then
+                    stat.Value = math.huge
                 end
             end
         end)
 
-        -- Method 7: Block Died event completely
-        humanoid.Died:Connect(function()
-            if BloodyBlox.Settings.GodMode then
-                humanoid.Health = math.huge
-                humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            end
-        end)
-
-        -- Method 8: Block HealthChanged to negative values
-        humanoid.HealthChanged:Connect(function(health)
-            if BloodyBlox.Settings.GodMode and health < humanoid.MaxHealth then
-                humanoid.Health = math.huge
-            end
-        end)
-
         table.insert(BloodyBlox.Connections, self.GodModeConnection)
-        BloodyBlox:Log("GodMode", "8 METHODS ACTIVE - TRUE INVINCIBILITY", "warn")
+        BloodyBlox:Log("GodMode", "TRUE INVINCIBILITY ACTIVE", "warn")
     else
-        -- Remove ForceField
         for _, v in pairs(character:GetChildren()) do
             if v:IsA("ForceField") then
                 v:Destroy()
@@ -894,7 +892,7 @@ function Combat:ToggleKillAura(enabled)
     end
 end
 
--- One Shot Kill: 999 Trillion Damage Per Hit
+-- One Shot Kill: 999 Trillion STRENGTH (Muscle Legends approach)
 function Combat:ToggleOneShot(enabled)
     if self.OneShotConnection then
         self.OneShotConnection:Disconnect()
@@ -902,9 +900,18 @@ function Combat:ToggleOneShot(enabled)
     end
 
     if enabled then
-        BloodyBlox:Log("OneShot", "999 TRILLION DAMAGE ACTIVATED", "warn")
+        BloodyBlox:Log("OneShot", "Setting Strength to 999 TRILLION...", "warn")
 
-        -- Hook into mouse clicks
+        -- Set player strength to 999 trillion
+        local strength = MuscleLegends:GetStrength()
+        if strength then
+            strength.Value = 999000000000000
+            BloodyBlox:Log("OneShot", "Strength = 999,000,000,000,000", "warn")
+        else
+            BloodyBlox:Log("OneShot", "Strength stat not found - trying all methods", "warn")
+        end
+
+        -- Keep strength maxed every frame
         self.OneShotConnection = RunService.Heartbeat:Connect(function()
             if not BloodyBlox.Settings.OneShot then
                 if self.OneShotConnection then
@@ -914,49 +921,23 @@ function Combat:ToggleOneShot(enabled)
                 return
             end
 
-            local mouse = BloodyBlox.Player:GetMouse()
-            local target = mouse.Target
+            -- Keep strength maxed
+            local strength = MuscleLegends:GetStrength()
+            if strength then
+                strength.Value = 999000000000000
+            end
 
-            if target and target.Parent then
-                local targetChar = target.Parent
-                local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-
-                if targetHumanoid and targetChar ~= BloodyBlox:GetCharacter() then
-                    -- Method 1: Set health to negative huge value
-                    targetHumanoid.Health = -999999999999999
-
-                    -- Method 2: Deal 999 trillion damage
-                    targetHumanoid:TakeDamage(999000000000000)
-
-                    -- Method 3: Set MaxHealth to 0
-                    targetHumanoid.MaxHealth = 0
-                    targetHumanoid.Health = 0
-
-                    -- Method 4: Fire all damage remotes with massive damage
-                    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
-                        if obj:IsA("RemoteEvent") then
-                            local name = obj.Name:lower()
-                            if name:find("damage") or name:find("hit") or name:find("attack") or name:find("punch") then
-                                pcall(function() obj:FireServer(targetHumanoid, 999000000000000) end)
-                                pcall(function() obj:FireServer(targetChar, 999000000000000) end)
-                                pcall(function() obj:FireServer(999000000000000) end)
-                            end
-                        end
-                    end
-
-                    -- Method 5: Destroy character parts
-                    for _, part in pairs(targetChar:GetChildren()) do
-                        if part:IsA("BasePart") and part.Name == "Head" then
-                            part:Destroy()
-                        end
-                    end
-
-                    BloodyBlox:Log("OneShot", "Target eliminated: " .. (targetChar.Name or "Unknown"), "warn")
+            -- Also try to find and max ALL offensive stats
+            local stats = MuscleLegends:GetPlayerStats()
+            for name, stat in pairs(stats) do
+                if name:lower():find("strength") or name:lower():find("power") or name:lower():find("muscle") or name:lower():find("force") or name:lower():find("damage") then
+                    stat.Value = 999000000000000
                 end
             end
         end)
 
         table.insert(BloodyBlox.Connections, self.OneShotConnection)
+        BloodyBlox:Log("OneShot", "999 TRILLION STRENGTH ACTIVE - ONE HIT = ONE KILL", "warn")
     else
         BloodyBlox:Log("OneShot", "Disabled", "info")
     end
@@ -1647,13 +1628,43 @@ local LogsTab = MainUI:CreateTab("Logs")
 MainUI:AddLabel(LogsTab, "Recent Logs (Last 50):")
 MainUI:AddLabel(LogsTab, "")
 
+MainUI:AddButton(LogsTab, "Copy All Logs to Clipboard", function()
+    local allLogs = ""
+    for i, log in ipairs(BloodyBlox.Logs) do
+        allLogs = allLogs .. string.format("[%s][%s] %s\n", log.time, log.category, log.message)
+    end
+
+    if setclipboard then
+        setclipboard(allLogs)
+        BloodyBlox:Log("Logs", "All logs copied to clipboard (" .. #BloodyBlox.Logs .. " entries)", "info")
+    elseif toclipboard then
+        toclipboard(allLogs)
+        BloodyBlox:Log("Logs", "All logs copied to clipboard (" .. #BloodyBlox.Logs .. " entries)", "info")
+    else
+        BloodyBlox:Log("Logs", "Clipboard function not available in your executor", "error")
+    end
+end)
+
+MainUI:AddLabel(LogsTab, "")
+MainUI:AddLabel(LogsTab, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+MainUI:AddLabel(LogsTab, "")
+
 task.spawn(function()
     while task.wait(2) do
         if LogsTab.Content then
-            -- Clear old logs
+            -- Clear old log labels
             for _, child in pairs(LogsTab.Content:GetChildren()) do
-                if child:IsA("TextLabel") and not child.Text:find("Recent Logs") then
-                    child:Destroy()
+                if child:IsA("TextLabel") and not child.Text:find("Recent Logs") and not child.Text:find("━━━") and child.Parent == LogsTab.Content then
+                    local isButton = false
+                    for _, sibling in pairs(child.Parent:GetChildren()) do
+                        if sibling:IsA("TextButton") and sibling.AbsolutePosition.Y < child.AbsolutePosition.Y then
+                            isButton = true
+                            break
+                        end
+                    end
+                    if not isButton then
+                        child:Destroy()
+                    end
                 end
             end
 
