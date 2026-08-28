@@ -40,7 +40,7 @@ task.wait(0.3)
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "3.4.0",
+    Version = "3.5.0",
     MenuOpen = false,
     Player = game:GetService("Players").LocalPlayer,
     Settings = {
@@ -54,6 +54,10 @@ local BloodyBlox = {
         InfiniteJump = false,
         GodMode = false,
         AntiAim = false,
+        Aimbot = false,
+        AimbotFOV = 200,
+        KillAura = false,
+        KillAuraRange = 50,
         Debug = false
     },
     Logs = {},
@@ -894,28 +898,56 @@ function Player:ToggleInfiniteJump(enabled)
 end
 
 function Player:ToggleAntiAim(enabled)
+    if self.AntiAimConnection then
+        self.AntiAimConnection:Disconnect()
+        self.AntiAimConnection = nil
+    end
+
     if enabled then
-        local antiAimConnection
-        antiAimConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        local spinSpeed = 0
+        self.AntiAimConnection = game:GetService("RunService").Heartbeat:Connect(function()
             if not BloodyBlox.Settings.AntiAim then
-                antiAimConnection:Disconnect()
+                if self.AntiAimConnection then
+                    self.AntiAimConnection:Disconnect()
+                    self.AntiAimConnection = nil
+                end
                 return
             end
 
             local hrp = BloodyBlox:GetHumanoidRootPart()
             if hrp then
-                -- Spin the character's HumanoidRootPart rapidly
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(30), 0)
+                spinSpeed = spinSpeed + 50  -- Accelerating spin
+
+                -- INSANE multi-axis rotation
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(
+                    math.rad(math.sin(spinSpeed) * 180),  -- X axis (pitch)
+                    math.rad(spinSpeed),                    -- Y axis (yaw) - main spin
+                    math.rad(math.cos(spinSpeed) * 180)    -- Z axis (roll)
+                )
+
+                -- Random velocity changes for extra chaos
+                if hrp:FindFirstChild("BodyVelocity") then
+                    hrp.BodyVelocity.Velocity = Vector3.new(
+                        math.random(-10, 10),
+                        math.random(-10, 10),
+                        math.random(-10, 10)
+                    )
+                end
             end
         end)
 
-        table.insert(BloodyBlox.Connections, antiAimConnection)
+        table.insert(BloodyBlox.Connections, self.AntiAimConnection)
+        BloodyBlox:Log("Player", "AntiAim: INSANE SPIN MODE", "info")
+    else
+        BloodyBlox:Log("Player", "AntiAim: OFF", "info")
     end
 end
 
 function Player:ToggleGodMode(enabled)
     local humanoid = BloodyBlox:GetHumanoid()
-    if not humanoid then return end
+    local character = BloodyBlox:GetCharacter()
+
+    if not humanoid or not character then return end
 
     if self.GodModeConnection then
         self.GodModeConnection:Disconnect()
@@ -923,31 +955,210 @@ function Player:ToggleGodMode(enabled)
     end
 
     if enabled then
+        -- Set infinite health
         humanoid.MaxHealth = math.huge
         humanoid.Health = math.huge
 
-        -- Block all damage by resetting health every frame
+        -- Make character invulnerable through ForceField
+        local forceField = Instance.new("ForceField")
+        forceField.Visible = false
+        forceField.Parent = character
+
+        -- Disable all damage scripts
+        for _, v in pairs(character:GetDescendants()) do
+            if v:IsA("Script") or v:IsA("LocalScript") then
+                v.Disabled = true
+            end
+        end
+
+        -- Constant health restore every frame
         self.GodModeConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            if humanoid and humanoid.Health < math.huge then
+            if not BloodyBlox.Settings.GodMode then
+                if self.GodModeConnection then
+                    self.GodModeConnection:Disconnect()
+                    self.GodModeConnection = nil
+                end
+                return
+            end
+
+            if humanoid then
                 humanoid.Health = math.huge
+                humanoid.MaxHealth = math.huge
+
+                -- Remove any debuffs
+                for _, effect in pairs(humanoid:GetChildren()) do
+                    if effect:IsA("NumberValue") or effect:IsA("BoolValue") then
+                        effect:Destroy()
+                    end
+                end
             end
         end)
 
-        -- Block Health property changes
-        humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-            if BloodyBlox.Settings.GodMode and humanoid.Health < math.huge then
-                humanoid.Health = math.huge
+        -- Block all damage events
+        for _, v in pairs(character:GetDescendants()) do
+            if v:IsA("Humanoid") then
+                v.HealthChanged:Connect(function()
+                    if BloodyBlox.Settings.GodMode and v.Health < math.huge then
+                        v.Health = math.huge
+                    end
+                end)
             end
-        end)
+        end
 
-        BloodyBlox:Log("Player", "God Mode: ON - Invincible", "info")
+        table.insert(BloodyBlox.Connections, self.GodModeConnection)
+        BloodyBlox:Log("Player", "God Mode: INVINCIBLE - ForceField Active", "info")
     else
+        -- Remove ForceField
+        for _, v in pairs(character:GetChildren()) do
+            if v:IsA("ForceField") then
+                v:Destroy()
+            end
+        end
+
         humanoid.MaxHealth = 100
         humanoid.Health = 100
         BloodyBlox:Log("Player", "God Mode: OFF", "info")
     end
 end
 
+-- ============ AIMBOT SYSTEM ============
+
+local Combat = {}
+
+function Combat:GetClosestPlayer()
+    local camera = workspace.CurrentCamera
+    local localPlayer = BloodyBlox.Player
+    local closestPlayer = nil
+    local shortestDistance = BloodyBlox.Settings.AimbotFOV
+
+    for _, player in pairs(game:GetService("Players"):GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local head = player.Character:FindFirstChild("Head")
+
+            if hrp and head then
+                local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+
+                if onScreen then
+                    local mousePos = game:GetService("UserInputService"):GetMouseLocation()
+                    local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+function Combat:ToggleAimbot(enabled)
+    if self.AimbotConnection then
+        self.AimbotConnection:Disconnect()
+        self.AimbotConnection = nil
+    end
+
+    if enabled then
+        self.AimbotConnection = game:GetService("RunService").RenderStepped:Connect(function()
+            if not BloodyBlox.Settings.Aimbot then
+                if self.AimbotConnection then
+                    self.AimbotConnection:Disconnect()
+                    self.AimbotConnection = nil
+                end
+                return
+            end
+
+            local target = self:GetClosestPlayer()
+            if target and target.Character then
+                local head = target.Character:FindFirstChild("Head")
+                if head then
+                    local camera = workspace.CurrentCamera
+                    camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
+                end
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.AimbotConnection)
+        BloodyBlox:Log("Combat", "Aimbot: LOCKED ON", "info")
+    else
+        BloodyBlox:Log("Combat", "Aimbot: OFF", "info")
+    end
+end
+
+function Combat:ToggleKillAura(enabled)
+    if self.KillAuraConnection then
+        self.KillAuraConnection:Disconnect()
+        self.KillAuraConnection = nil
+    end
+
+    if enabled then
+        self.KillAuraConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            if not BloodyBlox.Settings.KillAura then
+                if self.KillAuraConnection then
+                    self.KillAuraConnection:Disconnect()
+                    self.KillAuraConnection = nil
+                end
+                return
+            end
+
+            local localPlayer = BloodyBlox.Player
+            local character = BloodyBlox:GetCharacter()
+            local hrp = BloodyBlox:GetHumanoidRootPart()
+
+            if not hrp then return end
+
+            -- Attack all players in range
+            for _, player in pairs(game:GetService("Players"):GetPlayers()) do
+                if player ~= localPlayer and player.Character then
+                    local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
+                    local targetHumanoid = player.Character:FindFirstChild("Humanoid")
+
+                    if targetHRP and targetHumanoid then
+                        local distance = (hrp.Position - targetHRP.Position).Magnitude
+
+                        if distance <= BloodyBlox.Settings.KillAuraRange then
+                            -- Try multiple damage methods
+                            pcall(function()
+                                -- Method 1: Direct humanoid damage
+                                targetHumanoid.Health = 0
+
+                                -- Method 2: Fire all RemoteEvents with kill parameters
+                                local RS = game:GetService("ReplicatedStorage")
+                                for _, obj in pairs(RS:GetChildren()) do
+                                    if obj:IsA("RemoteEvent") then
+                                        pcall(function() obj:FireServer("damage", player) end)
+                                        pcall(function() obj:FireServer("kill", player) end)
+                                        pcall(function() obj:FireServer("attack", player) end)
+                                        pcall(function() obj:FireServer(player) end)
+                                        pcall(function() obj:FireServer(targetHumanoid) end)
+                                    end
+                                end
+
+                                -- Method 3: Teleport into them rapidly (collision damage)
+                                hrp.CFrame = targetHRP.CFrame
+
+                                -- Method 4: Fire click at their position
+                                local VIM = game:GetService("VirtualInputManager")
+                                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                            end)
+                        end
+                    end
+                end
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, self.KillAuraConnection)
+        BloodyBlox:Log("Combat", "Kill Aura: ATTACKING ALL PLAYERS IN " .. BloodyBlox.Settings.KillAuraRange .. " STUDS", "warn")
+    else
+        BloodyBlox:Log("Combat", "Kill Aura: OFF", "info")
+    end
+end
+
+print("[BloodyBlox] Combat module loaded")
 print("[BloodyBlox] Player module loaded")
 
 -- ============ CONFIG SYSTEM ============
@@ -1060,13 +1271,47 @@ end)
 
 -- Misc Tab
 local MiscTab = MainUI:CreateTab("Misc")
-MainUI:AddToggle(MiscTab, "Anti-Aim (Spin)", false, function(value)
+
+MainUI:AddToggle(MiscTab, "Anti-Aim (INSANE Spin)", false, function(value)
     BloodyBlox.Settings.AntiAim = value
     Player:ToggleAntiAim(value)
 end)
 MainUI:AddLabel(MiscTab, "")
-MainUI:AddLabel(MiscTab, "Anti-Aim spins your character rapidly")
-MainUI:AddLabel(MiscTab, "You can still walk normally")
+MainUI:AddLabel(MiscTab, "Anti-Aim: Multi-axis insane rotation")
+MainUI:AddLabel(MiscTab, "Movement still works normally")
+
+MainUI:AddLabel(MiscTab, "")
+MainUI:AddLabel(MiscTab, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+MainUI:AddLabel(MiscTab, "")
+
+MainUI:AddToggle(MiscTab, "Aimbot", false, function(value)
+    BloodyBlox.Settings.Aimbot = value
+    Combat:ToggleAimbot(value)
+end)
+
+MainUI:AddSlider(MiscTab, "Aimbot FOV", 50, 500, BloodyBlox.Settings.AimbotFOV, function(value)
+    BloodyBlox.Settings.AimbotFOV = value
+end)
+
+MainUI:AddLabel(MiscTab, "")
+MainUI:AddLabel(MiscTab, "Aimbot: Locks camera to closest player")
+
+MainUI:AddLabel(MiscTab, "")
+MainUI:AddLabel(MiscTab, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+MainUI:AddLabel(MiscTab, "")
+
+MainUI:AddToggle(MiscTab, "Kill Aura", false, function(value)
+    BloodyBlox.Settings.KillAura = value
+    Combat:ToggleKillAura(value)
+end)
+
+MainUI:AddSlider(MiscTab, "Kill Aura Range", 10, 200, BloodyBlox.Settings.KillAuraRange, function(value)
+    BloodyBlox.Settings.KillAuraRange = value
+end)
+
+MainUI:AddLabel(MiscTab, "")
+MainUI:AddLabel(MiscTab, "Kill Aura: Attacks ALL players in range")
+MainUI:AddLabel(MiscTab, "WARNING: Very aggressive, USE CAREFULLY")
 
 -- Config Tab
 local ConfigTab = MainUI:CreateTab("Config")
