@@ -40,7 +40,7 @@ task.wait(0.3)
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "3.5.1",
+    Version = "3.5.2",
     MenuOpen = false,
     Player = game:GetService("Players").LocalPlayer,
     Settings = {
@@ -698,33 +698,44 @@ print("[BloodyBlox] UI module loaded")
 local Farm = {}
 
 function Farm:FastFarm()
-    BloodyBlox:Log("FastFarm", "Started", "info")
-
-    while BloodyBlox.Settings.FastFarm do
-        task.wait(0.01)  -- Very fast loop
-
-        pcall(function()
-            -- Method 1: Direct mouse click simulation
-            local VIM = game:GetService("VirtualInputManager")
-            for i = 1, 5 do
-                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                task.wait(0.005)
-                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-            end
-
-            -- Method 2: Fire all RemoteEvents in ReplicatedStorage
-            local RS = game:GetService("ReplicatedStorage")
-            for _, obj in pairs(RS:GetChildren()) do
-                if obj:IsA("RemoteEvent") then
-                    pcall(function() obj:FireServer() end)
-                    pcall(function() obj:FireServer("click") end)
-                    pcall(function() obj:FireServer(true) end)
-                end
-            end
-        end)
+    if self.FastFarmRunning then
+        BloodyBlox:Log("FastFarm", "Already running", "warn")
+        return
     end
 
-    BloodyBlox:Log("FastFarm", "Stopped", "info")
+    self.FastFarmRunning = true
+    BloodyBlox:Log("FastFarm", "Started", "info")
+
+    task.spawn(function()
+        while BloodyBlox.Settings.FastFarm do
+            task.wait(0.1)  -- Slower loop - won't freeze UI
+
+            if not BloodyBlox.Settings.FastFarm then break end
+
+            pcall(function()
+                -- Method 1: Direct mouse click simulation (reduced)
+                local VIM = game:GetService("VirtualInputManager")
+                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                task.wait(0.01)
+                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+
+                -- Method 2: Fire RemoteEvents (limited to 3 per cycle)
+                local RS = game:GetService("ReplicatedStorage")
+                local eventCount = 0
+                for _, obj in pairs(RS:GetChildren()) do
+                    if obj:IsA("RemoteEvent") and eventCount < 3 then
+                        pcall(function() obj:FireServer() end)
+                        pcall(function() obj:FireServer("click") end)
+                        pcall(function() obj:FireServer(true) end)
+                        eventCount = eventCount + 1
+                    end
+                end
+            end)
+        end
+
+        self.FastFarmRunning = false
+        BloodyBlox:Log("FastFarm", "Stopped", "info")
+    end)
 end
 
 function Farm:AutoWeight()
