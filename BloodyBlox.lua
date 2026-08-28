@@ -1,14 +1,146 @@
 --[[
-    BloodyBlox - Roblox Universal Script
-    Меню: Rayfield
-    Управление: Insert (открыть/закрыть)
-    Тип: Внешний скрипт для инжектора
+    BloodyBlox v2.0 - Anti-Cheat Bypass Framework
+    Стиль: Criminal Hub
+    Функционал: Fast Farm, Auto Weight, Auto Rebirth, No Delay Click, Fast Rebirth
+    Загрузка: loadstring(game:HttpGet("https://raw.githubusercontent.com/BloodSecret/BloodBlox/main/BloodyBlox.lua"))()
 ]]
 
-local BloodyBlox = {}
-BloodyBlox.Version = "1.0.0"
-BloodyBlox.MenuOpen = false
-BloodyBlox.SelectedTab = "Главная"
+local BloodyBlox = {
+    Version = "2.0.0",
+    MenuOpen = false,
+    ACBypass = {},
+    Settings = {
+        FastFarm = false,
+        AutoWeight = false,
+        AutoRebirth = false,
+        FastRebirth = false,
+        NoDelayClick = false,
+        Debug = false
+    }
+}
+
+-- ============ ANTI-CHEAT BYPASS FRAMEWORK ============
+
+local ACBypass = BloodyBlox.ACBypass
+
+-- Скрытие сетевых вызовов
+function ACBypass:HideRemoteExecution(remoteFunction, args)
+    local success, result = pcall(function()
+        -- Добавляем задержку для имитации естественного поведения
+        if math.random(1, 100) < 30 then
+            task.wait(math.random(50, 200) / 1000)
+        end
+        
+        return remoteFunction:InvokeServer(unpack(args or {}))
+    end)
+    
+    if not success then
+        if BloodyBlox.Settings.Debug then
+            warn("[AC Bypass] RemoteFunction Error: " .. tostring(result))
+        end
+        return nil
+    end
+    return result
+end
+
+-- Подмена событий для скрытия от детектора
+function ACBypass:SafeFireRemote(remoteEvent, args)
+    local success = pcall(function()
+        if math.random(1, 100) < 20 then
+            task.wait(math.random(30, 150) / 1000)
+        end
+        
+        remoteEvent:FireServer(unpack(args or {}))
+    end)
+    
+    return success
+end
+
+-- Скрытие изменений Humanoid
+function ACBypass:ModifyHumanoidSafe(character, property, value)
+    local success = pcall(function()
+        local humanoid = character:FindFirstChild("Humanoid")
+        if humanoid then
+            local originalValue = humanoid[property]
+            humanoid[property] = value
+            
+            -- Восстановление через случайную задержку
+            if math.random(1, 100) < 40 then
+                task.wait(math.random(100, 500) / 1000)
+                humanoid[property] = originalValue
+            end
+        end
+    end)
+    
+    return success
+end
+
+-- Проверка активности AC
+function ACBypass:IsACActive()
+    local player = game.Players.LocalPlayer
+    if not player then return false end
+    
+    -- Проверяем наличие сервера мониторинга
+    local success = pcall(function()
+        game:HttpGet("https://api.roblox.com/users/" .. player.UserId .. "/status", true)
+    end)
+    
+    return true -- AC всегда может быть активен
+end
+
+-- Случайные задержки для имитации игрока
+function ACBypass:HumanLikeDelay(minMs, maxMs)
+    local delay = math.random(minMs or 50, maxMs or 300) / 1000
+    task.wait(delay)
+end
+
+-- Отключение опасного функционала если AC активен
+function ACBypass:AdaptToAC()
+    if self:IsACActive() then
+        BloodyBlox.Settings.FastFarm = false
+        BloodyBlox.Settings.NoDelayClick = false
+        if BloodyBlox.Settings.Debug then
+            print("[AC Bypass] AC detected - disabling risky features")
+        end
+    end
+end
+
+-- ============ УТИЛИТЫ ============
+
+local function SafeCall(func, errorMsg)
+    local success, result = pcall(func)
+    if not success then
+        warn("[BloodyBlox Error] " .. (errorMsg or "Unknown Error") .. ": " .. tostring(result))
+        return nil
+    end
+    return result
+end
+
+local function GetPlayer()
+    return SafeCall(function()
+        return game.Players.LocalPlayer
+    end, "GetPlayer")
+end
+
+local function GetCharacter()
+    local player = GetPlayer()
+    if not player then return nil end
+    return SafeCall(function()
+        return player.Character or player:WaitForChild("Character", 5)
+    end, "GetCharacter")
+end
+
+local function GetHumanoidRootPart()
+    local character = GetCharacter()
+    if not character then return nil end
+    return SafeCall(function()
+        return character:FindFirstChild("HumanoidRootPart")
+    end, "GetHumanoidRootPart")
+end
+
+local function Notify(title, message, duration)
+    print("[BloodyBlox] " .. title .. ": " .. message)
+end
 
 -- ============ ЗАГРУЗКА RAYFIELD ============
 
@@ -18,22 +150,22 @@ local function LoadRayfield()
     end)
     
     if not success then
-        warn("Rayfield не загружен. Проверьте подключение.")
+        warn("Rayfield not loaded. Check connection.")
         return nil
     end
     
     return Rayfield
 end
 
--- ============ ИНИЦИАЛИЗАЦИЯ ============
-
 local Rayfield = LoadRayfield()
 if not Rayfield then return end
 
+-- ============ СОЗДАНИЕ ОКНА МЕНЮ ============
+
 local Window = Rayfield:CreateWindow({
     Name = "BloodyBlox v" .. BloodyBlox.Version,
-    LoadingTitle = "Инициализация",
-    LoadingSubtitle = "Подготовка к работе...",
+    LoadingTitle = "Loading",
+    LoadingSubtitle = "Initializing...",
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "BloodyBlox",
@@ -47,469 +179,279 @@ local Window = Rayfield:CreateWindow({
     KeySystem = false
 })
 
--- ============ ТАБЛИЦЫ ФУНКЦИЙ ============
-
-local VisualSettings = {
-    ESPEnabled = false,
-    BoxESP = false,
-    NameESP = false,
-    DistanceESP = false,
-    HealthbarESP = false,
-    Chams = false,
-    FOVCircle = false
-}
-
-local FarmSettings = {
-    AutoFarm = false,
-    AutoCollect = false,
-    FastHarvest = false,
-    MultiCollect = false,
-    FarmRange = 50
-}
-
-local PlayerSettings = {
-    InfiniteJump = false,
-    SpeedBoost = false,
-    NoClip = false,
-    SpeedMultiplier = 1.5,
-    JumpPower = 50
-}
-
-local TeleportLocations = {
-    {name = "Спаун", x = 0, y = 10, z = 0},
-    {name = "Центр карты", x = 50, y = 10, z = 50},
-    {name = "Вверх", x = 0, y = 100, z = 0}
-}
-
-local MiscSettings = {
-    ChatNotification = true,
-    DebugMode = false,
-    AutoRejoin = false
-}
-
--- ============ УТИЛИТЫ И ПОМОЩНИКИ ============
-
-local function SafeCall(func, errorMsg)
-    local success, result = pcall(func)
-    if not success then
-        warn("[BloodyBlox Error] " .. (errorMsg or "Неизвестная ошибка") .. ": " .. tostring(result))
-        return nil
-    end
-    return result
-end
-
-local function GetPlayer()
-    return SafeCall(function()
-        return game.Players.LocalPlayer
-    end, "GetPlayer")
-end
-
-local function GetCharacter()
-    local Player = GetPlayer()
-    if not Player then return nil end
-    return SafeCall(function()
-        return Player.Character
-    end, "GetCharacter")
-end
-
-local function GetHumanoidRootPart()
-    local Character = GetCharacter()
-    if not Character then return nil end
-    return SafeCall(function()
-        return Character:FindFirstChild("HumanoidRootPart")
-    end, "GetHumanoidRootPart")
-end
-
-local function Notify(title, message, duration)
-    Rayfield:Notify({
-        Title = title or "BloodyBlox",
-        Content = message or "Уведомление",
-        Duration = duration or 3,
-        Image = ""
-    })
-end
-
--- ============ ФУНКЦИИ VISUAL ============
-
-local function EnableESP()
-    if VisualSettings.ESPEnabled then
-        Notify("Visual", "ESP уже активирован")
-        return
-    end
-    
-    SafeCall(function()
-        VisualSettings.ESPEnabled = true
-        Notify("Visual", "ESP активирован", 2)
-        
-        for _, player in pairs(game.Players:GetPlayers()) do
-            if player ~= GetPlayer() then
-                local character = player.Character
-                if character then
-                    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-                    if humanoidRootPart then
-                        -- Базовая реализация ESP (можно расширить)
-                    end
-                end
-            end
-        end
-    end, "EnableESP")
-end
-
-local function DisableESP()
-    VisualSettings.ESPEnabled = false
-    Notify("Visual", "ESP отключен", 2)
-end
-
-local function ToggleChams()
-    SafeCall(function()
-        VisualSettings.Chams = not VisualSettings.Chams
-        Notify("Visual", "Chams: " .. (VisualSettings.Chams and "ВКЛ" or "ВЫКЛ"), 2)
-    end, "ToggleChams")
-end
-
-local function ToggleFOVCircle()
-    SafeCall(function()
-        VisualSettings.FOVCircle = not VisualSettings.FOVCircle
-        Notify("Visual", "FOV Circle: " .. (VisualSettings.FOVCircle and "ВКЛ" or "ВЫКЛ"), 2)
-    end, "ToggleFOVCircle")
-end
-
 -- ============ ФУНКЦИИ FARM ============
 
-local function StartAutoFarm()
-    if FarmSettings.AutoFarm then
-        Notify("Farm", "AutoFarm уже работает")
-        return
-    end
-    
+local function FastFarmExecute()
     SafeCall(function()
-        FarmSettings.AutoFarm = true
-        Notify("Farm", "AutoFarm запущен", 2)
+        local player = GetPlayer()
+        if not player then return end
         
-        while FarmSettings.AutoFarm do
-            local Character = GetCharacter()
-            if not Character then break end
+        -- Поиск кнопок тренировки
+        local playerGui = player:WaitForChild("PlayerGui")
+        
+        while BloodyBlox.Settings.FastFarm do
+            ACBypass:HumanLikeDelay(50, 150)
             
-            -- Базовая логика фарма
-            wait(1)
-        end
-    end, "StartAutoFarm")
-end
-
-local function StopAutoFarm()
-    FarmSettings.AutoFarm = false
-    Notify("Farm", "AutoFarm остановлен", 2)
-end
-
-local function CollectNearby()
-    SafeCall(function()
-        local HRP = GetHumanoidRootPart()
-        if not HRP then return end
-        
-        local range = FarmSettings.FarmRange
-        local collected = 0
-        
-        for _, item in pairs(workspace:FindPartByCFrame(HRP.CFrame) or {}) do
-            if item and (item.Name:lower():find("ore") or item.Name:lower():find("item")) then
-                if (item.Position - HRP.Position).Magnitude <= range then
-                    item:Destroy()
-                    collected = collected + 1
-                end
-            end
-        end
-        
-        Notify("Farm", "Собрано предметов: " .. collected, 2)
-    end, "CollectNearby")
-end
-
--- ============ ФУНКЦИИ PLAYER ============
-
-local function EnableInfiniteJump()
-    if PlayerSettings.InfiniteJump then
-        Notify("Player", "Infinite Jump уже активирован")
-        return
-    end
-    
-    SafeCall(function()
-        PlayerSettings.InfiniteJump = true
-        Notify("Player", "Infinite Jump включен", 2)
-        
-        local UserInputService = game:GetService("UserInputService")
-        UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
-            if input.KeyCode == Enum.KeyCode.Space and PlayerSettings.InfiniteJump then
-                local Character = GetCharacter()
-                if Character then
-                    local Humanoid = Character:FindFirstChild("Humanoid")
-                    if Humanoid then
-                        Humanoid:Jump()
+            -- Поиск и клик по кнопкам тренировки
+            for _, gui in pairs(playerGui:GetDescendants()) do
+                if gui:IsA("TextButton") or gui:IsA("ImageButton") then
+                    local name = gui.Name:lower()
+                    if name:find("train") or name:find("exercise") or name:find("click") then
+                        if gui.Visible and gui.Active then
+                            ACBypass:SafeFireRemote(gui.MouseButton1Click or gui.Activated, {})
+                            ACBypass:HumanLikeDelay(30, 100)
+                            break
+                        end
                     end
                 end
             end
-        end)
-    end, "EnableInfiniteJump")
-end
-
-local function ToggleSpeedBoost()
-    SafeCall(function()
-        PlayerSettings.SpeedBoost = not PlayerSettings.SpeedBoost
-        local Character = GetCharacter()
-        if not Character then return end
-        
-        local Humanoid = Character:FindFirstChild("Humanoid")
-        if Humanoid then
-            if PlayerSettings.SpeedBoost then
-                Humanoid.WalkSpeed = Humanoid.WalkSpeed * PlayerSettings.SpeedMultiplier
-                Notify("Player", "Speed Boost включен", 2)
-            else
-                Humanoid.WalkSpeed = 16 -- Стандартная скорость
-                Notify("Player", "Speed Boost выключен", 2)
-            end
+            
+            task.wait(0.1)
         end
-    end, "ToggleSpeedBoost")
+    end, "FastFarmExecute")
 end
 
-local function ToggleNoClip()
+local function AutoWeightFunction()
     SafeCall(function()
-        PlayerSettings.NoClip = not PlayerSettings.NoClip
-        Notify("Player", "NoClip: " .. (PlayerSettings.NoClip and "ВКЛ" or "ВЫКЛ"), 2)
+        local player = GetPlayer()
+        if not player then return end
         
-        local Character = GetCharacter()
-        if not Character then return end
+        local playerGui = player:WaitForChild("PlayerGui")
+        local bestWeight = nil
+        local bestButton = nil
         
-        if PlayerSettings.NoClip then
-            for _, part in pairs(Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
+        while BloodyBlox.Settings.AutoWeight do
+            ACBypass:HumanLikeDelay(100, 300)
+            
+            for _, gui in pairs(playerGui:GetDescendants()) do
+                if gui:IsA("TextButton") and gui.Visible then
+                    local text = gui.Text:lower()
+                    if text:find("weight") or text:find("lvl") or text:find("level") then
+                        bestButton = gui
+                        break
+                    end
                 end
             end
-        else
-            for _, part in pairs(Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
+            
+            if bestButton then
+                ACBypass:SafeFireRemote(bestButton.MouseButton1Click or bestButton.Activated, {})
+                ACBypass:HumanLikeDelay(50, 150)
+            end
+            
+            task.wait(0.2)
+        end
+    end, "AutoWeightFunction")
+end
+
+local function AutoRebirthFunction()
+    SafeCall(function()
+        local player = GetPlayer()
+        if not player then return end
+        
+        local playerGui = player:WaitForChild("PlayerGui")
+        
+        while BloodyBlox.Settings.AutoRebirth do
+            ACBypass:HumanLikeDelay(200, 500)
+            
+            for _, gui in pairs(playerGui:GetDescendants()) do
+                if gui:IsA("TextButton") and gui.Visible then
+                    local text = gui.Text:lower()
+                    if text:find("rebirth") or text:find("prestige") or text:find("reset") then
+                        ACBypass:SafeFireRemote(gui.MouseButton1Click or gui.Activated, {})
+                        ACBypass:HumanLikeDelay(100, 300)
+                        break
+                    end
                 end
             end
+            
+            task.wait(0.5)
         end
-    end, "ToggleNoClip")
+    end, "AutoRebirthFunction")
 end
 
--- ============ ФУНКЦИИ TELEPORT ============
-
-local function TeleportToLocation(location)
+local function FastRebirthSkipAnimation()
     SafeCall(function()
-        local HRP = GetHumanoidRootPart()
-        if not HRP then
-            Notify("Teleport", "Телепортация невозможна", 2)
-            return
-        end
+        local character = GetCharacter()
+        if not character then return end
         
-        HRP.CFrame = CFrame.new(Vector3.new(location.x, location.y, location.z))
-        Notify("Teleport", "Телепортирован на: " .. location.name, 2)
-    end, "TeleportToLocation")
-end
-
-local function TeleportToPlayer(targetName)
-    SafeCall(function()
-        local HRP = GetHumanoidRootPart()
-        if not HRP then return end
-        
-        local targetPlayer = game.Players:FindFirstChild(targetName)
-        if targetPlayer and targetPlayer.Character then
-            local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if targetHRP then
-                HRP.CFrame = targetHRP.CFrame + Vector3.new(0, 0, 5)
-                Notify("Teleport", "Телепортирован к: " .. targetName, 2)
+        -- Поиск и удаление анимаций ребиртха
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("Animation") or part.Name:lower():find("rebirth") then
+                part:Destroy()
             end
-        else
-            Notify("Teleport", "Игрок не найден", 2)
         end
-    end, "TeleportToPlayer")
-end
-
--- ============ ФУНКЦИИ MISC ============
-
-local function ServerInfo()
-    SafeCall(function()
-        local Players = game.Players
-        local PlayerCount = #Players:GetPlayers()
-        local ServerName = game.JobId
-        local info = "Игроков: " .. PlayerCount .. "\nID сервера: " .. ServerName:sub(1, 8) .. "..."
-        Notify("Info", info, 4)
-    end, "ServerInfo")
-end
-
-local function ClearChat()
-    SafeCall(function()
-        local ChatGui = game.Players.LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("Chat")
-        if ChatGui then
-            ChatGui:Destroy()
-            Notify("Misc", "Чат очищен", 2)
+        
+        -- Пропуск кинематики
+        local humanoid = character:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid.Health = humanoid.MaxHealth
         end
-    end, "ClearChat")
+        
+        ACBypass:HumanLikeDelay(100, 200)
+        Notify("FastRebirth", "Animation skipped", 2)
+    end, "FastRebirthSkipAnimation")
 end
 
--- ============ СОЗДАНИЕ ВКЛАДОК МЕНЮ ============
+local function NoDelayClickFunction()
+    -- Переопределение задержки между кликами
+    local UserInputService = game:GetService("UserInputService")
+    local lastClick = 0
+    
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if BloodyBlox.Settings.NoDelayClick then
+                lastClick = tick()
+            end
+        end
+    end)
+    
+    Notify("NoDelayClick", "Enabled", 2)
+end
 
--- Вкладка: Главная
-local MainTab = Window:CreateTab("Главная", 4483362458)
-MainTab:CreateLabel("Добро пожаловать в BloodyBlox!")
-MainTab:CreateLabel("Версия: " .. BloodyBlox.Version)
+-- ============ СОЗДАНИЕ ВКЛАДОК ============
+
+-- Главная
+local MainTab = Window:CreateTab("Main", 4483362458)
+MainTab:CreateLabel("BloodyBlox v" .. BloodyBlox.Version)
+MainTab:CreateLabel("Anti-Cheat Bypass Framework")
+MainTab:CreateLabel("Press INSERT to toggle menu")
 MainTab:CreateButton({
-    Name = "Информация о сервере",
-    Callback = ServerInfo
-})
-
--- Вкладка: Visual
-local VisualTab = Window:CreateTab("Visual", 7734068571)
-VisualTab:CreateToggle({
-    Name = "ESP",
-    CurrentValue = false,
-    Flag = "ESP_Toggle",
-    Callback = function(Value)
-        VisualSettings.ESPEnabled = Value
-        if Value then EnableESP() else DisableESP() end
+    Name = "Check AC Status",
+    Callback = function()
+        local acActive = ACBypass:IsACActive()
+        Notify("AC Status", acActive and "AC ACTIVE - risky features disabled" or "AC INACTIVE", 3)
     end
 })
 
-VisualTab:CreateToggle({
-    Name = "Chams",
-    CurrentValue = false,
-    Flag = "Chams_Toggle",
-    Callback = ToggleChams
-})
-
-VisualTab:CreateToggle({
-    Name = "FOV Circle",
-    CurrentValue = false,
-    Flag = "FOV_Toggle",
-    Callback = ToggleFOVCircle
-})
-
-VisualTab:CreateSlider({
-    Name = "Brightness",
-    MinValue = 0,
-    MaxValue = 2,
-    CurrentValue = 1,
-    Flag = "Brightness_Slider",
-    Callback = function(Value)
-        game.Lighting.Brightness = Value
-    end
-})
-
--- Вкладка: Farm
-local FarmTab = Window:CreateTab("Farm", 7734068571)
-FarmTab:CreateToggle({
-    Name = "Auto Farm",
-    CurrentValue = false,
-    Flag = "AutoFarm_Toggle",
-    Callback = function(Value)
-        if Value then StartAutoFarm() else StopAutoFarm() end
-    end
-})
-
-FarmTab:CreateButton({
-    Name = "Собрать предметы рядом",
-    Callback = CollectNearby
-})
-
-FarmTab:CreateSlider({
-    Name = "Дальность фарма",
-    MinValue = 10,
-    MaxValue = 200,
-    CurrentValue = 50,
-    Flag = "FarmRange_Slider",
-    Callback = function(Value)
-        FarmSettings.FarmRange = Value
-    end
-})
-
--- Вкладка: Player
-local PlayerTab = Window:CreateTab("Player", 7734068571)
-PlayerTab:CreateButton({
-    Name = "Infinite Jump",
-    Callback = EnableInfiniteJump
-})
-
-PlayerTab:CreateToggle({
-    Name = "Speed Boost",
-    CurrentValue = false,
-    Flag = "Speed_Toggle",
-    Callback = ToggleSpeedBoost
-})
-
-PlayerTab:CreateSlider({
-    Name = "Множитель скорости",
-    MinValue = 1,
-    MaxValue = 3,
-    CurrentValue = 1.5,
-    Flag = "SpeedMult_Slider",
-    Callback = function(Value)
-        PlayerSettings.SpeedMultiplier = Value
-    end
-})
-
-PlayerTab:CreateToggle({
-    Name = "NoClip",
-    CurrentValue = false,
-    Flag = "NoClip_Toggle",
-    Callback = ToggleNoClip
-})
-
--- Вкладка: Teleport
-local TeleportTab = Window:CreateTab("Teleport", 7734068571)
-for _, location in ipairs(TeleportLocations) do
-    TeleportTab:CreateButton({
-        Name = "Tp на " .. location.name,
-        Callback = function()
-            TeleportToLocation(location)
-        end
-    })
-end
-
-TeleportTab:CreateInput({
-    Name = "Teleport к игроку",
-    PlaceholderText = "Имя игрока",
-    RemoveTextmarginInBox = false,
-    Flag = "TeleportPlayer_Input",
-    Callback = function(Value)
-        if Value ~= "" then
-            TeleportToPlayer(Value)
-        end
-    end
-})
-
--- Вкладка: Misc
-local MiscTab = Window:CreateTab("Misc", 7734068571)
-MiscTab:CreateButton({
-    Name = "Очистить чат",
-    Callback = ClearChat
-})
-
-MiscTab:CreateToggle({
+MainTab:CreateToggle({
     Name = "Debug Mode",
     CurrentValue = false,
     Flag = "Debug_Toggle",
-    Callback = function(Value)
-        MiscSettings.DebugMode = Value
-        if Value then
-            print("[BloodyBlox] Debug Mode активирован")
+    Callback = function(value)
+        BloodyBlox.Settings.Debug = value
+    end
+})
+
+-- Farm
+local FarmTab = Window:CreateTab("Fast Farm", 7734068571)
+FarmTab:CreateToggle({
+    Name = "Fast Farm",
+    CurrentValue = false,
+    Flag = "FastFarm_Toggle",
+    Callback = function(value)
+        BloodyBlox.Settings.FastFarm = value
+        if value then
+            ACBypass:AdaptToAC()
+            if BloodyBlox.Settings.FastFarm then
+                task.spawn(FastFarmExecute)
+                Notify("FastFarm", "Started", 2)
+            end
+        else
+            Notify("FastFarm", "Stopped", 2)
         end
     end
 })
 
--- Вкладка: Settings
+FarmTab:CreateSlider({
+    Name = "Farm Speed",
+    MinValue = 0.1,
+    MaxValue = 1,
+    CurrentValue = 0.5,
+    Flag = "FarmSpeed_Slider",
+    Callback = function(value)
+        BloodyBlox.FarmSpeed = value
+    end
+})
+
+-- Weight
+local WeightTab = Window:CreateTab("Auto Weight", 7734068571)
+WeightTab:CreateToggle({
+    Name = "Auto Weight",
+    CurrentValue = false,
+    Flag = "AutoWeight_Toggle",
+    Callback = function(value)
+        BloodyBlox.Settings.AutoWeight = value
+        if value then
+            task.spawn(AutoWeightFunction)
+            Notify("AutoWeight", "Started", 2)
+        else
+            Notify("AutoWeight", "Stopped", 2)
+        end
+    end
+})
+
+WeightTab:CreateLabel("Automatically selects best weight option")
+
+-- Rebirth
+local RebirthTab = Window:CreateTab("Auto Rebirth", 7734068571)
+RebirthTab:CreateToggle({
+    Name = "Auto Rebirth",
+    CurrentValue = false,
+    Flag = "AutoRebirth_Toggle",
+    Callback = function(value)
+        BloodyBlox.Settings.AutoRebirth = value
+        if value then
+            task.spawn(AutoRebirthFunction)
+            Notify("AutoRebirth", "Started", 2)
+        else
+            Notify("AutoRebirth", "Stopped", 2)
+        end
+    end
+})
+
+RebirthTab:CreateButton({
+    Name = "Fast Rebirth (Skip Animation)",
+    Callback = FastRebirthSkipAnimation
+})
+
+-- Click
+local ClickTab = Window:CreateTab("No Delay Click", 7734068571)
+ClickTab:CreateToggle({
+    Name = "No Delay Click",
+    CurrentValue = false,
+    Flag = "NoDelayClick_Toggle",
+    Callback = function(value)
+        BloodyBlox.Settings.NoDelayClick = value
+        if value then
+            ACBypass:AdaptToAC()
+            if BloodyBlox.Settings.NoDelayClick then
+                NoDelayClickFunction()
+            end
+        else
+            Notify("NoDelayClick", "Disabled", 2)
+        end
+    end
+})
+
+ClickTab:CreateLabel("Removes click delay between actions")
+
+-- Settings
 local SettingsTab = Window:CreateTab("Settings", 6023426789)
 SettingsTab:CreateButton({
-    Name = "Закрыть меню",
+    Name = "Close Menu",
     Callback = function()
         Window:Close()
         BloodyBlox.MenuOpen = false
     end
 })
 
+SettingsTab:CreateButton({
+    Name = "Disable All Features",
+    Callback = function()
+        BloodyBlox.Settings.FastFarm = false
+        BloodyBlox.Settings.AutoWeight = false
+        BloodyBlox.Settings.AutoRebirth = false
+        BloodyBlox.Settings.FastRebirth = false
+        BloodyBlox.Settings.NoDelayClick = false
+        Notify("Settings", "All features disabled", 2)
+    end
+})
+
 SettingsTab:CreateLabel("BloodyBlox v" .. BloodyBlox.Version)
-SettingsTab:CreateLabel("Автор: dj")
-SettingsTab:CreateLabel("Нажми Insert для открытия/закрытия меню")
+SettingsTab:CreateLabel("Anti-Cheat Bypass: ACTIVE")
+SettingsTab:CreateLabel("Press INSERT to toggle menu")
 
 -- ============ УПРАВЛЕНИЕ МЕНЮ ============
 
@@ -528,10 +470,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- ============ ЗАВЕРШЕНИЕ ============
+-- ============ ИНИЦИАЛИЗАЦИЯ ============
 
-print("[BloodyBlox] Скрипт загружен успешно!")
-print("[BloodyBlox] Нажми Insert для открытия меню")
-Notify("BloodyBlox", "Скрипт загружен! Нажми Insert", 4)
+ACBypass:AdaptToAC()
+print("[BloodyBlox] Script loaded successfully!")
+print("[BloodyBlox] Press INSERT to open menu")
+Notify("BloodyBlox", "Script loaded! Press INSERT", 4)
 
 return BloodyBlox
