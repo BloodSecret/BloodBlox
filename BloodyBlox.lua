@@ -53,6 +53,7 @@ local BloodyBlox = {
         Noclip = false,
         InfiniteJump = false,
         GodMode = false,
+        AntiAim = false,
         Debug = false
     },
     Logs = {},
@@ -119,12 +120,12 @@ function UI:Create()
     self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     self.ScreenGui.DisplayOrder = 999
 
-    -- Main Container (transparent)
+    -- Main Container (MORE transparent)
     self.MainFrame = Instance.new("Frame")
     self.MainFrame.Size = UDim2.new(0, 600, 0, 400)
     self.MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-    self.MainFrame.BackgroundTransparency = 0.15  -- Slightly transparent
-    self.MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+    self.MainFrame.BackgroundTransparency = 0.5  -- Much more transparent
+    self.MainFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 10)
     self.MainFrame.BorderSizePixel = 0
     self.MainFrame.Active = true
     self.MainFrame.Draggable = true
@@ -195,11 +196,11 @@ function UI:Create()
         end
     end)
 
-    -- Blur overlay for glassmorphism effect
+    -- Blur overlay for glassmorphism effect (MORE transparent)
     local blurOverlay = Instance.new("Frame")
     blurOverlay.Size = UDim2.new(1, 0, 1, 0)
-    blurOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-    blurOverlay.BackgroundTransparency = 0.3  -- Semi-transparent for blur effect
+    blurOverlay.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+    blurOverlay.BackgroundTransparency = 0.6  -- Much more transparent
     blurOverlay.BorderSizePixel = 0
     blurOverlay.ZIndex = 1
     blurOverlay.Parent = self.MainFrame
@@ -318,12 +319,12 @@ function UI:Create()
         self:Destroy()
     end)
 
-    -- Sidebar for tabs (semi-transparent)
+    -- Sidebar for tabs (MORE transparent)
     self.TabContainer = Instance.new("ScrollingFrame")
     self.TabContainer.Size = UDim2.new(0, 140, 1, -65)
     self.TabContainer.Position = UDim2.new(0, 10, 0, 58)
-    self.TabContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-    self.TabContainer.BackgroundTransparency = 0.3
+    self.TabContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    self.TabContainer.BackgroundTransparency = 0.6  -- Much more transparent
     self.TabContainer.BorderSizePixel = 0
     self.TabContainer.ScrollBarThickness = 0
     self.TabContainer.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -348,12 +349,12 @@ function UI:Create()
     tabPadding.PaddingBottom = UDim.new(0, 8)
     tabPadding.Parent = self.TabContainer
 
-    -- Content area (semi-transparent)
+    -- Content area (MORE transparent)
     self.ContentContainer = Instance.new("Frame")
     self.ContentContainer.Size = UDim2.new(1, -170, 1, -65)
     self.ContentContainer.Position = UDim2.new(0, 160, 0, 58)
-    self.ContentContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-    self.ContentContainer.BackgroundTransparency = 0.3
+    self.ContentContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    self.ContentContainer.BackgroundTransparency = 0.6  -- Much more transparent
     self.ContentContainer.BorderSizePixel = 0
     self.ContentContainer.ZIndex = 2
     self.ContentContainer.Parent = self.MainFrame
@@ -723,23 +724,24 @@ function Farm:FastFarm()
     BloodyBlox:Log("FastFarm", "Started", "info")
 
     while BloodyBlox.Settings.FastFarm do
-        task.wait(0.05)
+        task.wait(0.01)  -- Very fast loop
 
         pcall(function()
-            -- Method 1: Direct VirtualInputManager (most reliable)
+            -- Method 1: Direct mouse click simulation
             local VIM = game:GetService("VirtualInputManager")
-            VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-            task.wait(0.01)
-            VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+            for i = 1, 5 do
+                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                task.wait(0.005)
+                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+            end
 
-            -- Method 2: Find and fire RemoteEvents
+            -- Method 2: Fire all RemoteEvents in ReplicatedStorage
             local RS = game:GetService("ReplicatedStorage")
-            for _, obj in pairs(RS:GetDescendants()) do
+            for _, obj in pairs(RS:GetChildren()) do
                 if obj:IsA("RemoteEvent") then
-                    local name = obj.Name:lower()
-                    if name:find("click") or name:find("train") or name:find("add") or name:find("gain") then
-                        obj:FireServer()
-                    end
+                    pcall(function() obj:FireServer() end)
+                    pcall(function() obj:FireServer("click") end)
+                    pcall(function() obj:FireServer(true) end)
                 end
             end
         end)
@@ -757,20 +759,20 @@ function Farm:AutoWeight()
         pcall(function()
             local RS = game:GetService("ReplicatedStorage")
 
-            -- Find weight/equipment remotes
+            -- Try all remotes with different weight parameters
             for _, obj in pairs(RS:GetDescendants()) do
                 if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                    local name = obj.Name:lower()
-                    if name:find("weight") or name:find("equip") or name:find("tool") then
+                    pcall(function()
                         if obj:IsA("RemoteEvent") then
-                            obj:FireServer("Heavy") -- Common parameter
+                            obj:FireServer("weight")
+                            obj:FireServer("Heavy")
                             obj:FireServer("MAX")
                             obj:FireServer(999999)
                         else
-                            pcall(function() obj:InvokeServer("Heavy") end)
-                            pcall(function() obj:InvokeServer("MAX") end)
+                            obj:InvokeServer("weight")
+                            obj:InvokeServer("Heavy")
                         end
-                    end
+                    end)
                 end
             end
         end)
@@ -783,29 +785,29 @@ function Farm:AutoRebirth()
     BloodyBlox:Log("AutoRebirth", "Started", "info")
 
     while BloodyBlox.Settings.AutoRebirth do
-        task.wait(2)
+        task.wait(1)
 
         pcall(function()
             local RS = game:GetService("ReplicatedStorage")
 
-            -- Find rebirth remotes
+            -- Try all remotes for rebirth
             for _, obj in pairs(RS:GetDescendants()) do
                 if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                    local name = obj.Name:lower()
-                    if name:find("rebirth") or name:find("prestige") or name:find("reset") then
+                    pcall(function()
                         if obj:IsA("RemoteEvent") then
+                            obj:FireServer("rebirth")
+                            obj:FireServer("Rebirth")
+                            obj:FireServer("prestige")
                             obj:FireServer()
-                            BloodyBlox:Log("AutoRebirth", "Rebirth attempted", "info")
                         else
-                            pcall(function()
-                                obj:InvokeServer()
-                                BloodyBlox:Log("AutoRebirth", "Rebirth attempted", "info")
-                            end)
+                            obj:InvokeServer("rebirth")
+                            obj:InvokeServer()
                         end
-                        task.wait(3)
-                    end
+                    end)
                 end
             end
+
+            BloodyBlox:Log("AutoRebirth", "Attempted rebirth", "info")
         end)
     end
 
@@ -834,26 +836,41 @@ end
 
 function Player:ToggleFly(enabled)
     if enabled then
+        -- Create BodyVelocity for no-fall fly
+        local bodyVel = Instance.new("BodyVelocity")
+        bodyVel.Name = "FlyVelocity"
+        bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        bodyVel.Velocity = Vector3.new(0, 0, 0)
+
         local flyConnection
         flyConnection = game:GetService("RunService").Heartbeat:Connect(function()
             if not BloodyBlox.Settings.Fly then
+                if bodyVel and bodyVel.Parent then
+                    bodyVel:Destroy()
+                end
                 flyConnection:Disconnect()
                 return
             end
 
             local hrp = BloodyBlox:GetHumanoidRootPart()
             if hrp then
+                -- Attach BodyVelocity if not attached
+                if not bodyVel.Parent then
+                    bodyVel.Parent = hrp
+                end
+
                 local UIS = game:GetService("UserInputService")
                 local velocity = Vector3.new(0, 0, 0)
+                local speed = 4  -- Faster fly speed
 
-                if UIS:IsKeyDown(Enum.KeyCode.W) then velocity = velocity + (workspace.CurrentCamera.CFrame.LookVector * 2) end
-                if UIS:IsKeyDown(Enum.KeyCode.S) then velocity = velocity - (workspace.CurrentCamera.CFrame.LookVector * 2) end
-                if UIS:IsKeyDown(Enum.KeyCode.A) then velocity = velocity - (workspace.CurrentCamera.CFrame.RightVector * 2) end
-                if UIS:IsKeyDown(Enum.KeyCode.D) then velocity = velocity + (workspace.CurrentCamera.CFrame.RightVector * 2) end
-                if UIS:IsKeyDown(Enum.KeyCode.Space) then velocity = velocity + Vector3.new(0, 2, 0) end
-                if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then velocity = velocity - Vector3.new(0, 2, 0) end
+                if UIS:IsKeyDown(Enum.KeyCode.W) then velocity = velocity + (workspace.CurrentCamera.CFrame.LookVector * speed) end
+                if UIS:IsKeyDown(Enum.KeyCode.S) then velocity = velocity - (workspace.CurrentCamera.CFrame.LookVector * speed) end
+                if UIS:IsKeyDown(Enum.KeyCode.A) then velocity = velocity - (workspace.CurrentCamera.CFrame.RightVector * speed) end
+                if UIS:IsKeyDown(Enum.KeyCode.D) then velocity = velocity + (workspace.CurrentCamera.CFrame.RightVector * speed) end
+                if UIS:IsKeyDown(Enum.KeyCode.Space) then velocity = velocity + Vector3.new(0, speed, 0) end
+                if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then velocity = velocity - Vector3.new(0, speed, 0) end
 
-                hrp.Velocity = velocity * 20
+                bodyVel.Velocity = velocity * 25  -- Much faster
             end
         end)
 
@@ -900,6 +917,26 @@ function Player:ToggleInfiniteJump(enabled)
         end)
 
         table.insert(BloodyBlox.Connections, infJumpConnection)
+    end
+end
+
+function Player:ToggleAntiAim(enabled)
+    if enabled then
+        local antiAimConnection
+        antiAimConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            if not BloodyBlox.Settings.AntiAim then
+                antiAimConnection:Disconnect()
+                return
+            end
+
+            local hrp = BloodyBlox:GetHumanoidRootPart()
+            if hrp then
+                -- Spin the character's HumanoidRootPart rapidly
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(30), 0)
+            end
+        end)
+
+        table.insert(BloodyBlox.Connections, antiAimConnection)
     end
 end
 
@@ -1025,6 +1062,16 @@ MainUI:AddToggle(PlayerTab, "God Mode", false, function(value)
     BloodyBlox.Settings.GodMode = value
     Player:ToggleGodMode(value)
 end)
+
+-- Misc Tab
+local MiscTab = MainUI:CreateTab("Misc")
+MainUI:AddToggle(MiscTab, "Anti-Aim (Spin)", false, function(value)
+    BloodyBlox.Settings.AntiAim = value
+    Player:ToggleAntiAim(value)
+end)
+MainUI:AddLabel(MiscTab, "")
+MainUI:AddLabel(MiscTab, "Anti-Aim spins your character rapidly")
+MainUI:AddLabel(MiscTab, "You can still walk normally")
 
 -- Config Tab
 local ConfigTab = MainUI:CreateTab("Config")
