@@ -40,7 +40,7 @@ task.wait(0.3)
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "3.3.0",
+    Version = "3.4.0",
     MenuOpen = false,
     Player = game:GetService("Players").LocalPlayer,
     Settings = {
@@ -261,35 +261,7 @@ function UI:Create()
     versionCorner.CornerRadius = UDim.new(0, 4)
     versionCorner.Parent = versionLabel
 
-    -- Control buttons
-    self.MinimizeButton = Instance.new("TextButton")
-    self.MinimizeButton.Size = UDim2.new(0, 35, 0, 35)
-    self.MinimizeButton.Position = UDim2.new(1, -80, 0.5, -17.5)
-    self.MinimizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    self.MinimizeButton.BackgroundTransparency = 0.3
-    self.MinimizeButton.BorderSizePixel = 0
-    self.MinimizeButton.Text = "—"
-    self.MinimizeButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-    self.MinimizeButton.Font = Enum.Font.GothamBold
-    self.MinimizeButton.TextSize = 16
-    self.MinimizeButton.ZIndex = 3
-    self.MinimizeButton.Parent = self.TitleBar
-
-    local minCorner = Instance.new("UICorner")
-    minCorner.CornerRadius = UDim.new(0, 6)
-    minCorner.Parent = self.MinimizeButton
-
-    self.MinimizeButton.MouseEnter:Connect(function()
-        self.MinimizeButton.BackgroundTransparency = 0.1
-    end)
-    self.MinimizeButton.MouseLeave:Connect(function()
-        self.MinimizeButton.BackgroundTransparency = 0.3
-    end)
-    self.MinimizeButton.MouseButton1Click:Connect(function()
-        self.ScreenGui.Enabled = false
-        BloodyBlox.MenuOpen = false
-    end)
-
+    -- Control buttons (X minimizes menu, Exit in Settings closes cheat)
     self.ExitButton = Instance.new("TextButton")
     self.ExitButton.Size = UDim2.new(0, 35, 0, 35)
     self.ExitButton.Position = UDim2.new(1, -40, 0.5, -17.5)
@@ -316,7 +288,8 @@ function UI:Create()
         self.ExitButton.BackgroundTransparency = 0.3
     end)
     self.ExitButton.MouseButton1Click:Connect(function()
-        self:Destroy()
+        self.ScreenGui.Enabled = false
+        BloodyBlox.MenuOpen = false
     end)
 
     -- Sidebar for tabs (MORE transparent)
@@ -942,14 +915,36 @@ end
 
 function Player:ToggleGodMode(enabled)
     local humanoid = BloodyBlox:GetHumanoid()
-    if humanoid then
-        if enabled then
-            humanoid.MaxHealth = math.huge
-            humanoid.Health = math.huge
-        else
-            humanoid.MaxHealth = 100
-            humanoid.Health = 100
-        end
+    if not humanoid then return end
+
+    if self.GodModeConnection then
+        self.GodModeConnection:Disconnect()
+        self.GodModeConnection = nil
+    end
+
+    if enabled then
+        humanoid.MaxHealth = math.huge
+        humanoid.Health = math.huge
+
+        -- Block all damage by resetting health every frame
+        self.GodModeConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            if humanoid and humanoid.Health < math.huge then
+                humanoid.Health = math.huge
+            end
+        end)
+
+        -- Block Health property changes
+        humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+            if BloodyBlox.Settings.GodMode and humanoid.Health < math.huge then
+                humanoid.Health = math.huge
+            end
+        end)
+
+        BloodyBlox:Log("Player", "God Mode: ON - Invincible", "info")
+    else
+        humanoid.MaxHealth = 100
+        humanoid.Health = 100
+        BloodyBlox:Log("Player", "God Mode: OFF", "info")
     end
 end
 
@@ -1125,6 +1120,13 @@ MainUI:AddButton(SettingsTab, "Disable All Features", function()
 
     BloodyBlox:Log("Settings", "All features disabled", "info")
 end)
+
+MainUI:AddButton(SettingsTab, "EXIT CHEAT", function()
+    MainUI:Destroy()
+    _G.BloodyBloxLoaded = nil
+    BloodyBlox:Log("Settings", "Cheat closed completely", "warn")
+end)
+
 MainUI:AddLabel(SettingsTab, "")
 MainUI:AddLabel(SettingsTab, "Version: " .. BloodyBlox.Version)
 MainUI:AddLabel(SettingsTab, "Anti-Detection: ACTIVE")
