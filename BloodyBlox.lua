@@ -65,10 +65,15 @@ function Bypass:Initialize()
 end
 
 -- Initialize bypass immediately
+print("[BloodyBlox] Initializing bypass...")
 Bypass:Initialize()
+print("[BloodyBlox] Bypass initialized")
 
 -- Delay to avoid instant detection
-task.wait(math.random(300, 700) / 1000)
+local delay = math.random(300, 700) / 1000
+print("[BloodyBlox] Waiting " .. delay .. "s before UI creation...")
+task.wait(delay)
+print("[BloodyBlox] Delay complete, creating UI...")
 
 -- ============ CORE FRAMEWORK ============
 
