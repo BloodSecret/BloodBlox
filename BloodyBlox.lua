@@ -109,7 +109,7 @@ local UI = {}
 UI.__index = UI
 
 function UI:Create()
-    print("[BloodyBlox] Creating professional UI...")
+    print("[BloodyBlox] Creating transparent UI with background...")
     local self = setmetatable({}, UI)
 
     -- ScreenGui
@@ -119,11 +119,12 @@ function UI:Create()
     self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     self.ScreenGui.DisplayOrder = 999
 
-    -- Main Container
+    -- Main Container (transparent)
     self.MainFrame = Instance.new("Frame")
     self.MainFrame.Size = UDim2.new(0, 600, 0, 400)
     self.MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-    self.MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    self.MainFrame.BackgroundTransparency = 0.15  -- Slightly transparent
+    self.MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
     self.MainFrame.BorderSizePixel = 0
     self.MainFrame.Active = true
     self.MainFrame.Draggable = true
@@ -131,27 +132,90 @@ function UI:Create()
     self.MainFrame.Parent = self.ScreenGui
 
     local mainCorner = Instance.new("UICorner")
-    mainCorner.CornerRadius = UDim.new(0, 10)
+    mainCorner.CornerRadius = UDim.new(0, 12)
     mainCorner.Parent = self.MainFrame
 
-    -- Subtle shadow effect
-    local shadow = Instance.new("ImageLabel")
-    shadow.Name = "Shadow"
-    shadow.BackgroundTransparency = 1
-    shadow.Position = UDim2.new(0, -15, 0, -15)
-    shadow.Size = UDim2.new(1, 30, 1, 30)
-    shadow.ZIndex = 0
-    shadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.ImageTransparency = 0.7
-    shadow.Parent = self.MainFrame
+    -- Background Image (non-transparent)
+    local background = Instance.new("ImageLabel")
+    background.Name = "Background"
+    background.Size = UDim2.new(1, 0, 1, 0)
+    background.BackgroundTransparency = 1
+    background.ScaleType = Enum.ScaleType.Crop
+    background.ImageTransparency = 0  -- Fully opaque
+    background.ZIndex = 0
+    background.Parent = self.MainFrame
+
+    local bgCorner = Instance.new("UICorner")
+    bgCorner.CornerRadius = UDim.new(0, 12)
+    bgCorner.Parent = background
+
+    -- Try to load background image from file
+    pcall(function()
+        local bgPath = "C:\\Roblox\\background.png"
+        if isfile and readfile and isfile(bgPath) then
+            local bgData = readfile(bgPath)
+            -- Try to use getcustomasset if available
+            if getcustomasset then
+                background.Image = getcustomasset(bgPath)
+                print("[BloodyBlox] Background loaded from file")
+            elseif getsynasset then
+                background.Image = getsynasset(bgPath)
+                print("[BloodyBlox] Background loaded from file")
+            else
+                -- Fallback: use dark gradient
+                background.Image = ""
+                background.BackgroundTransparency = 0
+                background.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+
+                local gradient = Instance.new("UIGradient")
+                gradient.Color = ColorSequence.new{
+                    ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 10, 20)),
+                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(10, 10, 15)),
+                    ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 10, 20))
+                }
+                gradient.Rotation = 45
+                gradient.Parent = background
+                print("[BloodyBlox] Using gradient background (getcustomasset not available)")
+            end
+        else
+            -- Fallback: dark gradient
+            background.Image = ""
+            background.BackgroundTransparency = 0
+            background.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+
+            local gradient = Instance.new("UIGradient")
+            gradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 10, 20)),
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(10, 10, 15)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 10, 20))
+            }
+            gradient.Rotation = 45
+            gradient.Parent = background
+            print("[BloodyBlox] Background file not found, using gradient")
+        end
+    end)
+
+    -- Blur overlay for glassmorphism effect
+    local blurOverlay = Instance.new("Frame")
+    blurOverlay.Size = UDim2.new(1, 0, 1, 0)
+    blurOverlay.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    blurOverlay.BackgroundTransparency = 0.3  -- Semi-transparent for blur effect
+    blurOverlay.BorderSizePixel = 0
+    blurOverlay.ZIndex = 1
+    blurOverlay.Parent = self.MainFrame
+
+    local blurCorner = Instance.new("UICorner")
+    blurCorner.CornerRadius = UDim.new(0, 12)
+    blurCorner.Parent = blurOverlay
 
     -- Top accent line
     local accentLine = Instance.new("Frame")
     accentLine.Size = UDim2.new(1, 0, 0, 3)
     accentLine.Position = UDim2.new(0, 0, 0, 0)
     accentLine.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+    accentLine.BackgroundTransparency = 0.2
     accentLine.BorderSizePixel = 0
+    accentLine.ZIndex = 3
     accentLine.Parent = self.MainFrame
 
     -- Header
@@ -159,7 +223,9 @@ function UI:Create()
     self.TitleBar.Size = UDim2.new(1, 0, 0, 50)
     self.TitleBar.Position = UDim2.new(0, 0, 0, 3)
     self.TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    self.TitleBar.BackgroundTransparency = 0.3
     self.TitleBar.BorderSizePixel = 0
+    self.TitleBar.ZIndex = 2
     self.TitleBar.Parent = self.MainFrame
 
     -- Logo/Title
@@ -172,6 +238,9 @@ function UI:Create()
     self.TitleText.TextXAlignment = Enum.TextXAlignment.Left
     self.TitleText.Font = Enum.Font.GothamBold
     self.TitleText.TextSize = 20
+    self.TitleText.TextStrokeTransparency = 0.8
+    self.TitleText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    self.TitleText.ZIndex = 3
     self.TitleText.Parent = self.TitleBar
 
     -- Version tag
@@ -179,10 +248,12 @@ function UI:Create()
     versionLabel.Size = UDim2.new(0, 60, 0, 18)
     versionLabel.Position = UDim2.new(0, 200, 0.5, -9)
     versionLabel.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+    versionLabel.BackgroundTransparency = 0.2
     versionLabel.Text = "v" .. BloodyBlox.Version
     versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     versionLabel.Font = Enum.Font.GothamBold
     versionLabel.TextSize = 11
+    versionLabel.ZIndex = 3
     versionLabel.Parent = self.TitleBar
 
     local versionCorner = Instance.new("UICorner")
@@ -194,11 +265,13 @@ function UI:Create()
     self.MinimizeButton.Size = UDim2.new(0, 35, 0, 35)
     self.MinimizeButton.Position = UDim2.new(1, -80, 0.5, -17.5)
     self.MinimizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    self.MinimizeButton.BackgroundTransparency = 0.3
     self.MinimizeButton.BorderSizePixel = 0
     self.MinimizeButton.Text = "—"
     self.MinimizeButton.TextColor3 = Color3.fromRGB(200, 200, 200)
     self.MinimizeButton.Font = Enum.Font.GothamBold
     self.MinimizeButton.TextSize = 16
+    self.MinimizeButton.ZIndex = 3
     self.MinimizeButton.Parent = self.TitleBar
 
     local minCorner = Instance.new("UICorner")
@@ -206,10 +279,10 @@ function UI:Create()
     minCorner.Parent = self.MinimizeButton
 
     self.MinimizeButton.MouseEnter:Connect(function()
-        self.MinimizeButton.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+        self.MinimizeButton.BackgroundTransparency = 0.1
     end)
     self.MinimizeButton.MouseLeave:Connect(function()
-        self.MinimizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+        self.MinimizeButton.BackgroundTransparency = 0.3
     end)
     self.MinimizeButton.MouseButton1Click:Connect(function()
         self.ScreenGui.Enabled = false
@@ -220,11 +293,13 @@ function UI:Create()
     self.ExitButton.Size = UDim2.new(0, 35, 0, 35)
     self.ExitButton.Position = UDim2.new(1, -40, 0.5, -17.5)
     self.ExitButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    self.ExitButton.BackgroundTransparency = 0.3
     self.ExitButton.BorderSizePixel = 0
     self.ExitButton.Text = "×"
     self.ExitButton.TextColor3 = Color3.fromRGB(200, 200, 200)
     self.ExitButton.Font = Enum.Font.GothamBold
     self.ExitButton.TextSize = 20
+    self.ExitButton.ZIndex = 3
     self.ExitButton.Parent = self.TitleBar
 
     local exitCorner = Instance.new("UICorner")
@@ -233,24 +308,28 @@ function UI:Create()
 
     self.ExitButton.MouseEnter:Connect(function()
         self.ExitButton.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+        self.ExitButton.BackgroundTransparency = 0.1
     end)
     self.ExitButton.MouseLeave:Connect(function()
         self.ExitButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+        self.ExitButton.BackgroundTransparency = 0.3
     end)
     self.ExitButton.MouseButton1Click:Connect(function()
         self:Destroy()
     end)
 
-    -- Sidebar for tabs
+    -- Sidebar for tabs (semi-transparent)
     self.TabContainer = Instance.new("ScrollingFrame")
     self.TabContainer.Size = UDim2.new(0, 140, 1, -65)
     self.TabContainer.Position = UDim2.new(0, 10, 0, 58)
     self.TabContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    self.TabContainer.BackgroundTransparency = 0.3
     self.TabContainer.BorderSizePixel = 0
     self.TabContainer.ScrollBarThickness = 0
     self.TabContainer.ScrollingDirection = Enum.ScrollingDirection.Y
     self.TabContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
     self.TabContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    self.TabContainer.ZIndex = 2
     self.TabContainer.Parent = self.MainFrame
 
     local sidebarCorner = Instance.new("UICorner")
@@ -269,12 +348,14 @@ function UI:Create()
     tabPadding.PaddingBottom = UDim.new(0, 8)
     tabPadding.Parent = self.TabContainer
 
-    -- Content area
+    -- Content area (semi-transparent)
     self.ContentContainer = Instance.new("Frame")
     self.ContentContainer.Size = UDim2.new(1, -170, 1, -65)
     self.ContentContainer.Position = UDim2.new(0, 160, 0, 58)
     self.ContentContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    self.ContentContainer.BackgroundTransparency = 0.3
     self.ContentContainer.BorderSizePixel = 0
+    self.ContentContainer.ZIndex = 2
     self.ContentContainer.Parent = self.MainFrame
 
     local contentCorner = Instance.new("UICorner")
@@ -286,7 +367,7 @@ function UI:Create()
 
     self.ScreenGui.Parent = BloodyBlox.Player:WaitForChild("PlayerGui")
 
-    print("[BloodyBlox] Professional UI created")
+    print("[BloodyBlox] Transparent UI with background created")
     return self
 end
 
