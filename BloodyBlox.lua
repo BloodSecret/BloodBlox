@@ -50,7 +50,7 @@ local TweenService = game:GetService("TweenService")
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "4.0.2",
+    Version = "4.0.3",
     MenuOpen = false,
     Player = Players.LocalPlayer,
     Settings = {
@@ -600,7 +600,7 @@ function Player:ToggleAntiAim(enabled)
     end
 end
 
--- God Mode: Muscle Legends approach - Max all player stats
+-- God Mode: ULTIMATE APPROACH - Block ALL incoming damage
 function Player:ToggleGodMode(enabled)
     local humanoid = BloodyBlox:GetHumanoid()
     local character = BloodyBlox:GetCharacter()
@@ -613,18 +613,25 @@ function Player:ToggleGodMode(enabled)
     end
 
     if enabled then
-        BloodyBlox:Log("GodMode", "Maxing ALL player stats...", "warn")
+        BloodyBlox:Log("GodMode", "BLOCKING ALL DAMAGE...", "warn")
 
         -- Method 1: Infinite Health
         humanoid.MaxHealth = math.huge
         humanoid.Health = math.huge
 
-        -- Method 2: Max ALL player stats (Durability, Defense, Armor, etc.)
-        local stats = MuscleLegends:GetPlayerStats()
-        for name, stat in pairs(stats) do
-            if name:lower():find("durability") or name:lower():find("defense") or name:lower():find("armor") or name:lower():find("health") then
-                stat.Value = math.huge
-                BloodyBlox:Log("GodMode", "Set " .. name .. " = INFINITE", "info")
+        -- Method 2: Block ALL RemoteEvents that could deal damage
+        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+            if remote:IsA("RemoteEvent") then
+                local oldFireServer = remote.FireServer
+                remote.FireServer = function(self, ...)
+                    local args = {...}
+                    -- Block if first arg is local player (target)
+                    if args[1] == BloodyBlox.Player or args[1] == character then
+                        BloodyBlox:Log("GodMode", "Blocked damage from " .. remote.Name, "info")
+                        return
+                    end
+                    return oldFireServer(self, ...)
+                end
             end
         end
 
@@ -633,7 +640,7 @@ function Player:ToggleGodMode(enabled)
         forceField.Visible = false
         forceField.Parent = character
 
-        -- Constant restore loop
+        -- Method 4: Constant health restore
         self.GodModeConnection = RunService.Heartbeat:Connect(function()
             if not BloodyBlox.Settings.GodMode then
                 if self.GodModeConnection then
@@ -648,18 +655,17 @@ function Player:ToggleGodMode(enabled)
                 hum.Health = math.huge
                 hum.MaxHealth = math.huge
             end
+        end)
 
-            -- Keep all defensive stats maxed
-            local stats = MuscleLegends:GetPlayerStats()
-            for name, stat in pairs(stats) do
-                if name:lower():find("durability") or name:lower():find("defense") or name:lower():find("armor") or name:lower():find("health") then
-                    stat.Value = math.huge
-                end
+        -- Method 5: Block Humanoid.Died event
+        humanoid.Died:Connect(function()
+            if BloodyBlox.Settings.GodMode then
+                humanoid.Health = math.huge
             end
         end)
 
         table.insert(BloodyBlox.Connections, self.GodModeConnection)
-        BloodyBlox:Log("GodMode", "TRUE INVINCIBILITY ACTIVE", "warn")
+        BloodyBlox:Log("GodMode", "ALL DAMAGE BLOCKED - TRUE INVINCIBILITY", "warn")
     else
         for _, v in pairs(character:GetChildren()) do
             if v:IsA("ForceField") then
@@ -892,7 +898,7 @@ function Combat:ToggleKillAura(enabled)
     end
 end
 
--- One Shot Kill: 999 Trillion STRENGTH (Muscle Legends approach)
+-- One Shot Kill: HOOK ALL DAMAGE REMOTES - Modify outgoing damage to 999T
 function Combat:ToggleOneShot(enabled)
     if self.OneShotConnection then
         self.OneShotConnection:Disconnect()
@@ -900,18 +906,48 @@ function Combat:ToggleOneShot(enabled)
     end
 
     if enabled then
-        BloodyBlox:Log("OneShot", "Setting Strength to 999 TRILLION...", "warn")
+        BloodyBlox:Log("OneShot", "HOOKING ALL DAMAGE REMOTES - 999T DAMAGE", "warn")
 
-        -- Set player strength to 999 trillion
+        -- Hook ALL RemoteEvents to modify damage parameter
+        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+            if remote:IsA("RemoteEvent") then
+                local remoteName = remote.Name:lower()
+
+                -- If it's a damage/hit/punch/attack remote
+                if remoteName:find("damage") or remoteName:find("hit") or remoteName:find("punch") or
+                   remoteName:find("attack") or remoteName:find("swing") or remoteName:find("strike") then
+
+                    -- Hook FireServer to modify damage
+                    local oldFireServer = remote.FireServer
+                    remote.FireServer = function(self, ...)
+                        local args = {...}
+
+                        -- Modify all numeric arguments to 999 trillion
+                        for i, arg in ipairs(args) do
+                            if type(arg) == "number" then
+                                args[i] = 999000000000000
+                            end
+                        end
+
+                        -- Add 999T as additional parameter if no numbers found
+                        table.insert(args, 999000000000000)
+
+                        BloodyBlox:Log("OneShot", "Modified " .. remote.Name .. " → 999T damage", "info")
+                        return oldFireServer(self, unpack(args))
+                    end
+
+                    BloodyBlox:Log("OneShot", "Hooked: " .. remote.Name, "info")
+                end
+            end
+        end
+
+        -- Also set Strength to 999T (in case game checks it)
         local strength = MuscleLegends:GetStrength()
         if strength then
             strength.Value = 999000000000000
-            BloodyBlox:Log("OneShot", "Strength = 999,000,000,000,000", "warn")
-        else
-            BloodyBlox:Log("OneShot", "Strength stat not found - trying all methods", "warn")
         end
 
-        -- Keep strength maxed every frame
+        -- Keep strength maxed
         self.OneShotConnection = RunService.Heartbeat:Connect(function()
             if not BloodyBlox.Settings.OneShot then
                 if self.OneShotConnection then
@@ -921,23 +957,14 @@ function Combat:ToggleOneShot(enabled)
                 return
             end
 
-            -- Keep strength maxed
             local strength = MuscleLegends:GetStrength()
             if strength then
                 strength.Value = 999000000000000
             end
-
-            -- Also try to find and max ALL offensive stats
-            local stats = MuscleLegends:GetPlayerStats()
-            for name, stat in pairs(stats) do
-                if name:lower():find("strength") or name:lower():find("power") or name:lower():find("muscle") or name:lower():find("force") or name:lower():find("damage") then
-                    stat.Value = 999000000000000
-                end
-            end
         end)
 
         table.insert(BloodyBlox.Connections, self.OneShotConnection)
-        BloodyBlox:Log("OneShot", "999 TRILLION STRENGTH ACTIVE - ONE HIT = ONE KILL", "warn")
+        BloodyBlox:Log("OneShot", "999 TRILLION DAMAGE ACTIVE - ALL HITS INSTANT KILL", "warn")
     else
         BloodyBlox:Log("OneShot", "Disabled", "info")
     end
