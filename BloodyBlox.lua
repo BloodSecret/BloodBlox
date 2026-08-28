@@ -50,7 +50,7 @@ local TweenService = game:GetService("TweenService")
 -- ============ CORE FRAMEWORK ============
 
 local BloodyBlox = {
-    Version = "4.0.3",
+    Version = "4.0.4",
     MenuOpen = false,
     Player = Players.LocalPlayer,
     Settings = {
@@ -600,39 +600,25 @@ function Player:ToggleAntiAim(enabled)
     end
 end
 
--- God Mode: ULTIMATE APPROACH - Block ALL incoming damage
+-- God Mode: FINAL APPROACH - Hook Humanoid:TakeDamage to block ALL damage
 function Player:ToggleGodMode(enabled)
     local humanoid = BloodyBlox:GetHumanoid()
     local character = BloodyBlox:GetCharacter()
 
     if not humanoid or not character then return end
 
-    if self.GodModeConnection then
-        self.GodModeConnection:Disconnect()
-        self.GodModeConnection = nil
-    end
-
     if enabled then
-        BloodyBlox:Log("GodMode", "BLOCKING ALL DAMAGE...", "warn")
+        BloodyBlox:Log("GodMode", "HOOKING Humanoid:TakeDamage - BLOCKING ALL DAMAGE", "warn")
 
-        -- Method 1: Infinite Health
+        -- Method 1: Infinite Health (always works)
         humanoid.MaxHealth = math.huge
         humanoid.Health = math.huge
 
-        -- Method 2: Block ALL RemoteEvents that could deal damage
-        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-            if remote:IsA("RemoteEvent") then
-                local oldFireServer = remote.FireServer
-                remote.FireServer = function(self, ...)
-                    local args = {...}
-                    -- Block if first arg is local player (target)
-                    if args[1] == BloodyBlox.Player or args[1] == character then
-                        BloodyBlox:Log("GodMode", "Blocked damage from " .. remote.Name, "info")
-                        return
-                    end
-                    return oldFireServer(self, ...)
-                end
-            end
+        -- Method 2: Hook TakeDamage to block it
+        local oldTakeDamage = humanoid.TakeDamage
+        humanoid.TakeDamage = function(self, amount)
+            BloodyBlox:Log("GodMode", "Blocked " .. tostring(amount) .. " damage", "info")
+            return -- Block damage completely
         end
 
         -- Method 3: ForceField
@@ -640,41 +626,49 @@ function Player:ToggleGodMode(enabled)
         forceField.Visible = false
         forceField.Parent = character
 
-        -- Method 4: Constant health restore
-        self.GodModeConnection = RunService.Heartbeat:Connect(function()
-            if not BloodyBlox.Settings.GodMode then
-                if self.GodModeConnection then
-                    self.GodModeConnection:Disconnect()
-                    self.GodModeConnection = nil
-                end
-                return
-            end
-
-            local hum = BloodyBlox:GetHumanoid()
-            if hum then
-                hum.Health = math.huge
-                hum.MaxHealth = math.huge
-            end
-        end)
-
-        -- Method 5: Block Humanoid.Died event
-        humanoid.Died:Connect(function()
+        -- Method 4: Respawn hook to reapply God Mode
+        BloodyBlox.Player.CharacterAdded:Connect(function(newChar)
             if BloodyBlox.Settings.GodMode then
-                humanoid.Health = math.huge
+                task.wait(0.5)
+                local newHum = newChar:WaitForChild("Humanoid")
+                if newHum then
+                    newHum.MaxHealth = math.huge
+                    newHum.Health = math.huge
+
+                    -- Reapply TakeDamage hook
+                    newHum.TakeDamage = function(self, amount)
+                        BloodyBlox:Log("GodMode", "Blocked " .. tostring(amount) .. " damage (after respawn)", "info")
+                        return
+                    end
+
+                    -- Reapply ForceField
+                    local ff = Instance.new("ForceField")
+                    ff.Visible = false
+                    ff.Parent = newChar
+
+                    BloodyBlox:Log("GodMode", "God Mode reapplied after respawn", "warn")
+                end
             end
         end)
 
-        table.insert(BloodyBlox.Connections, self.GodModeConnection)
-        BloodyBlox:Log("GodMode", "ALL DAMAGE BLOCKED - TRUE INVINCIBILITY", "warn")
+        BloodyBlox:Log("GodMode", "TRUE INVINCIBILITY ACTIVE - TakeDamage HOOKED", "warn")
     else
-        for _, v in pairs(character:GetChildren()) do
-            if v:IsA("ForceField") then
-                v:Destroy()
-            end
+        -- Restore normal TakeDamage
+        local newHum = BloodyBlox:GetHumanoid()
+        if newHum then
+            -- Can't restore original, but set health to normal
+            newHum.MaxHealth = 100
+            newHum.Health = 100
         end
 
-        humanoid.MaxHealth = 100
-        humanoid.Health = 100
+        local char = BloodyBlox:GetCharacter()
+        if char then
+            for _, v in pairs(char:GetChildren()) do
+                if v:IsA("ForceField") then
+                    v:Destroy()
+                end
+            end
+        end
 
         BloodyBlox:Log("GodMode", "OFF", "info")
     end
@@ -898,75 +892,55 @@ function Combat:ToggleKillAura(enabled)
     end
 end
 
--- One Shot Kill: HOOK ALL DAMAGE REMOTES - Modify outgoing damage to 999T
+-- One Shot Kill: FINAL APPROACH - Hook __namecall to modify ALL damage calls to 999T
 function Combat:ToggleOneShot(enabled)
-    if self.OneShotConnection then
-        self.OneShotConnection:Disconnect()
-        self.OneShotConnection = nil
-    end
-
     if enabled then
-        BloodyBlox:Log("OneShot", "HOOKING ALL DAMAGE REMOTES - 999T DAMAGE", "warn")
+        BloodyBlox:Log("OneShot", "HOOKING __namecall - 999T DAMAGE ON ALL HITS", "warn")
 
-        -- Hook ALL RemoteEvents to modify damage parameter
-        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-            if remote:IsA("RemoteEvent") then
-                local remoteName = remote.Name:lower()
+        -- Hook __namecall metamethod to intercept ALL method calls
+        local mt = getrawmetatable(game)
+        local oldNamecall = mt.__namecall
 
-                -- If it's a damage/hit/punch/attack remote
+        setreadonly(mt, false)
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+
+            -- Hook TakeDamage calls from LOCAL PLAYER
+            if method == "TakeDamage" and self:IsA("Humanoid") then
+                local char = BloodyBlox:GetCharacter()
+                if char and self:IsDescendantOf(char) then
+                    -- This is OUR humanoid calling TakeDamage (we're hitting someone)
+                    -- Modify damage to 999T
+                    return oldNamecall(self, 999000000000000)
+                end
+            end
+
+            -- Hook FireServer for damage remotes
+            if method == "FireServer" and self:IsA("RemoteEvent") then
+                local remoteName = self.Name:lower()
                 if remoteName:find("damage") or remoteName:find("hit") or remoteName:find("punch") or
                    remoteName:find("attack") or remoteName:find("swing") or remoteName:find("strike") then
 
-                    -- Hook FireServer to modify damage
-                    local oldFireServer = remote.FireServer
-                    remote.FireServer = function(self, ...)
-                        local args = {...}
-
-                        -- Modify all numeric arguments to 999 trillion
-                        for i, arg in ipairs(args) do
-                            if type(arg) == "number" then
-                                args[i] = 999000000000000
-                            end
+                    -- Modify all numeric args to 999T
+                    for i = 1, #args do
+                        if type(args[i]) == "number" then
+                            args[i] = 999000000000000
                         end
-
-                        -- Add 999T as additional parameter if no numbers found
-                        table.insert(args, 999000000000000)
-
-                        BloodyBlox:Log("OneShot", "Modified " .. remote.Name .. " → 999T damage", "info")
-                        return oldFireServer(self, unpack(args))
                     end
 
-                    BloodyBlox:Log("OneShot", "Hooked: " .. remote.Name, "info")
+                    BloodyBlox:Log("OneShot", "Modified " .. self.Name .. " → 999T", "info")
+                    return oldNamecall(self, unpack(args))
                 end
             end
-        end
 
-        -- Also set Strength to 999T (in case game checks it)
-        local strength = MuscleLegends:GetStrength()
-        if strength then
-            strength.Value = 999000000000000
-        end
-
-        -- Keep strength maxed
-        self.OneShotConnection = RunService.Heartbeat:Connect(function()
-            if not BloodyBlox.Settings.OneShot then
-                if self.OneShotConnection then
-                    self.OneShotConnection:Disconnect()
-                    self.OneShotConnection = nil
-                end
-                return
-            end
-
-            local strength = MuscleLegends:GetStrength()
-            if strength then
-                strength.Value = 999000000000000
-            end
+            return oldNamecall(self, ...)
         end)
+        setreadonly(mt, true)
 
-        table.insert(BloodyBlox.Connections, self.OneShotConnection)
         BloodyBlox:Log("OneShot", "999 TRILLION DAMAGE ACTIVE - ALL HITS INSTANT KILL", "warn")
     else
-        BloodyBlox:Log("OneShot", "Disabled", "info")
+        BloodyBlox:Log("OneShot", "Disabled (requires rejoin to fully restore)", "warn")
     end
 end
 
