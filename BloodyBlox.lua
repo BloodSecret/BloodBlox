@@ -1707,14 +1707,19 @@ end
 task.wait(0.5)
 BloodyBlox:LoadTeleportPoints()
 
-local MainUI
-pcall(function()
-    repeat task.wait(0.1) until BloodyBlox.Player:FindFirstChild("PlayerGui")
-    MainUI = MainUI:Create()
-    MainUI.ScreenGui.Enabled = true
-    BloodyBlox.MenuOpen = true
-    print("[BloodyBlox] UI loaded - Press INSERT to toggle menu")
-end)
+print("[BloodyBlox] Starting UI initialization...")
+warn("[BloodyBlox] Waiting for PlayerGui...")
+
+repeat task.wait(0.1) until BloodyBlox.Player:FindFirstChild("PlayerGui")
+print("[BloodyBlox] PlayerGui found - creating UI...")
+
+MainUI = MainUI:Create()
+print("[BloodyBlox] MainUI created successfully")
+
+MainUI.ScreenGui.Enabled = true
+BloodyBlox.MenuOpen = true
+print("[BloodyBlox] UI loaded - Press INSERT to toggle menu")
+warn("[BloodyBlox] Menu should be visible now!")
 
 local FarmTab = MainUI:CreateTab("Farm")
 MainUI:AddToggle(FarmTab, "Fast Weight", false, function(v)
