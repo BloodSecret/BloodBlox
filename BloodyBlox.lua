@@ -1707,7 +1707,14 @@ end
 task.wait(0.5)
 BloodyBlox:LoadTeleportPoints()
 
-local MainUI = MainUI:Create()
+local MainUI
+pcall(function()
+    repeat task.wait(0.1) until BloodyBlox.Player:FindFirstChild("PlayerGui")
+    MainUI = MainUI:Create()
+    MainUI.ScreenGui.Enabled = true
+    BloodyBlox.MenuOpen = true
+    print("[BloodyBlox] UI loaded - Press INSERT to toggle menu")
+end)
 
 local FarmTab = MainUI:CreateTab("Farm")
 MainUI:AddToggle(FarmTab, "Fast Weight", false, function(v)
@@ -1923,8 +1930,21 @@ MainUI:AddButton(SettingsTab, "Disable All", function()
     end
     BloodyBlox:Log("Settings", "All disabled", "info")
 end)
-MainUI:AddButton(SettingsTab, "SAFE EXIT", function()
+MainUI:AddButton(SettingsTab, "EXIT", function()
     BloodyBlox:SafeCleanup()
     task.wait(0.3)
     MainUI.ScreenGui:Destroy()
     _G.BloodyBloxLoaded = nil
+end)
+MainUI:AddLabel(SettingsTab, "")
+MainUI:AddLabel(SettingsTab, "v" .. BloodyBlox.Version)
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if not gp and input.KeyCode == Enum.KeyCode.Insert then
+        BloodyBlox.MenuOpen = not BloodyBlox.MenuOpen
+        MainUI.ScreenGui.Enabled = BloodyBlox.MenuOpen
+    end
+end)
+
+BloodyBlox:Log("System", "v" .. BloodyBlox.Version .. " loaded", "info")
+print("[BloodyBlox] v" .. BloodyBlox.Version .. " - Press INSERT")
