@@ -273,54 +273,61 @@ end
 
 function Analyzer:StartRemoteSpy()
     if BloodyBlox.RemoteSpyHooked then
-        BloodyBlox:Log("RemoteSpy", "Already running", "warn")
+        BloodyBlox:Log("RemoteSpy", "Hook already active", "warn")
         return
     end
 
-    pcall(function()
-        local mt = getrawmetatable(game)
-        local oldNamecall = mt.__namecall
-        setreadonly(mt, false)
-
-        mt.__namecall = newcclosure(function(self, ...)
+    local success = pcall(function()
+        local OriginalNamecall
+        OriginalNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
 
-            if BloodyBlox.Settings.RemoteSpy then
-                if (method == "FireServer" or method == "InvokeServer") and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
-                    local remoteName = self.Name
-                    local remotePath = self:GetFullName()
-                    local remoteType = self.ClassName
+            if method == "FireServer" or method == "InvokeServer" then
+                if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
+                    local remoteName = self.Name or "Unknown"
+                    local remotePath = pcall(function() return self:GetFullName() end) and self:GetFullName() or "Unknown"
 
                     local argsStr = "NONE"
                     if #args > 0 then
-                        local argsList = {}
+                        local parts = {}
                         for i, arg in ipairs(args) do
                             local argType = type(arg)
-                            local argValue = tostring(arg)
+                            local argValue = "?"
 
-                            if argType == "table" then
-                                pcall(function()
-                                    argValue = HttpService:JSONEncode(arg)
-                                end)
-                            elseif argType == "Instance" then
-                                argValue = arg:GetFullName()
-                            elseif argType == "CFrame" or argType == "Vector3" then
-                                argValue = tostring(arg)
-                            end
+                            pcall(function()
+                                if argType == "table" then
+                                    local success, json = pcall(function() return HttpService:JSONEncode(arg) end)
+                                    argValue = success and json or ("Table[" .. #arg .. "]")
+                                elseif argType == "userdata" then
+                                    if typeof(arg) == "Instance" then
+                                        argValue = arg:GetFullName()
+                                    elseif typeof(arg) == "CFrame" then
+                                        argValue = "CFrame"
+                                    elseif typeof(arg) == "Vector3" then
+                                        argValue = "Vector3(" .. tostring(arg) .. ")"
+                                    else
+                                        argValue = typeof(arg)
+                                    end
+                                else
+                                    argValue = tostring(arg)
+                                end
+                            end)
 
-                            table.insert(argsList, string.format("[%d]=%s (%s)", i, argValue, argType))
+                            table.insert(parts, string.format("[%d]=%s (%s)", i, argValue, typeof(arg)))
                         end
-                        argsStr = table.concat(argsList, ", ")
+                        argsStr = table.concat(parts, ", ")
                     end
 
-                    local logEntry = string.format("%s | %s | Args: %s", remoteName, method, argsStr)
-                    BloodyBlox:Log("RemoteSpy", logEntry, "info")
+                    local logMsg = string.format("%s | %s | Args: %s", remoteName, method, argsStr)
+
+                    BloodyBlox:Log("RemoteSpy", logMsg, "info")
+                    print("[RemoteSpy] " .. logMsg)
+                    warn("[RemoteSpy] " .. logMsg)
 
                     table.insert(BloodyBlox.AnalyzerData.RemoteSpyData, {
                         Name = remoteName,
                         Path = remotePath,
-                        Type = remoteType,
                         Method = method,
                         Args = args,
                         Timestamp = os.time()
@@ -328,13 +335,19 @@ function Analyzer:StartRemoteSpy()
                 end
             end
 
-            return oldNamecall(self, ...)
+            return OriginalNamecall(self, ...)
         end)
 
-        setreadonly(mt, true)
         BloodyBlox.RemoteSpyHooked = true
-        BloodyBlox:Log("RemoteSpy", "HOOK INSTALLED - All FireServer/InvokeServer will be logged", "warn")
+        BloodyBlox:Log("RemoteSpy", "HOOK INSTALLED - Triple output (Logs/print/warn)", "warn")
+        print("[BloodyBlox] Remote Spy hook installed successfully")
+        warn("[BloodyBlox] Remote Spy hook installed - play manually to capture remotes")
     end)
+
+    if not success then
+        BloodyBlox:Log("RemoteSpy", "HOOK FAILED - hookmetamethod not supported", "error")
+        warn("[BloodyBlox] Remote Spy hook failed - executor may not support hookmetamethod")
+    end
 end
 
 function Analyzer:StopRemoteSpy()
@@ -1915,16 +1928,3 @@ MainUI:AddButton(SettingsTab, "SAFE EXIT", function()
     task.wait(0.3)
     MainUI.ScreenGui:Destroy()
     _G.BloodyBloxLoaded = nil
-end)
-MainUI:AddLabel(SettingsTab, "")
-MainUI:AddLabel(SettingsTab, "v" .. BloodyBlox.Version)
-
-UserInputService.InputBegan:Connect(function(input, gp)
-    if not gp and input.KeyCode == Enum.KeyCode.Insert then
-        BloodyBlox.MenuOpen = not BloodyBlox.MenuOpen
-        MainUI.ScreenGui.Enabled = BloodyBlox.MenuOpen
-    end
-end)
-
-BloodyBlox:Log("System", "v" .. BloodyBlox.Version .. " loaded", "info")
-print("[BloodyBlox] v" .. BloodyBlox.Version .. " - Press INSERT")
