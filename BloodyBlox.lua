@@ -1,5 +1,5 @@
 --[[
-    BloodyBlox v0.4.0
+    BloodyBlox v0.5.0
     Muscle Legends helper / analyzer
 
     Core fixes:
@@ -12,7 +12,12 @@
     - Fullbright restores the exact original Lighting values.
     - Config loading merges known settings instead of replacing the settings table.
     - Remote captures serialize arrays/dictionaries/Instances without guessing arguments.
+    - Game load guard prevents CoreGui nil crash on cold start (v0.5.0).
 ]]
+
+-- Wait for game to fully load before initializing
+repeat task.wait() until game:IsLoaded()
+repeat task.wait() until game.Players.LocalPlayer
 
 if _G.BloodyBloxLoaded then
     warn("[BloodyBlox] Already running")
