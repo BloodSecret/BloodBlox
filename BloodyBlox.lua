@@ -1,21 +1,31 @@
 --[[
-    BloodyBlox v0.5.2
+    BloodyBlox v0.5.3
     Muscle Legends helper / analyzer
 
-    Core fixes:
+    v0.5.3 changes (2026-08-30):
+    - Combat functions NO LONGER LOG (Kill Aura radius 1000 spam fixed)
+    - Watermark with FPS counter added (top-left corner)
+    - Main tab removed
+    - Analyzer tab expanded with all analysis functions
+    - Fly fixed: uses BodyVelocity with MaxForce properly set
+    - InfiniteJump fixed: uses :ChangeState(Jumping) correctly
+    - Anti-AFK hidden (still works, no UI toggle)
+    - Misc tab added: WalkWithDumbbell, FastStrafe
+    - Teleport points auto-save on add/delete
+    - Config auto-save on settings change
+    - Settings tab: Watermark toggle, Menu Scale slider (0.5-3.0)
+
+    Core architecture:
     - No loadstring() call is used inside this file.
     - Logs use a dedicated container; Refresh never destroys its own buttons/layout.
     - Exactly one UIListLayout is created for each dynamic container.
     - Remote hook validates hookmetamethod/getnamecallmethod/newcclosure before use.
-    - Fly uses LinearVelocity + Attachment, not BodyVelocity.
     - Noclip restores original CanCollide values.
     - Fullbright restores the exact original Lighting values.
     - Config loading merges known settings instead of replacing the settings table.
     - Remote captures serialize arrays/dictionaries/Instances without guessing arguments.
-    - Game load guard prevents CoreGui nil crash on cold start (v0.5.0).
-    - Auto Bad Aura farm added (v0.5.1).
-    - Combat tab restored with Anti-Aim, Kill Aura, Fast Hits (v0.5.2).
-    - Bad Aura filter fixed: only targets NPCs with "bad" in name (v0.5.2).
+    - Game load guard prevents CoreGui nil crash on cold start.
+    - Auto Bad Aura farm targets only NPCs with "bad" in name.
 ]]
 
 -- Wait for game to fully load before initializing
@@ -83,7 +93,7 @@ local function getGlobal(name)
 end
 
 local BloodyBlox = {
-    Version = "0.5.2",
+    Version = "0.5.3",
     MenuOpen = true,
     Player = LocalPlayer,
     Connections = {},
@@ -104,7 +114,6 @@ local BloodyBlox = {
         InfiniteJump = false,
         GodMode = false,
         Fullbright = false,
-        AntiAFK = true,
         RemoteSpyEnabled = false,
         WeightFarm = false,
         WeightInterval = 0.25,
@@ -120,13 +129,16 @@ local BloodyBlox = {
         KillAura = false,
         KillAuraRadius = 20,
         FastHits = false,
+        WalkWithDumbbell = false,
+        FastStrafe = false,
+        ShowWatermark = true,
+        MenuScale = 1.0,
     },
     State = {
         LogContainer = nil,
         FullbrightBackup = nil,
         NoclipBackup = {},
         FlyVelocity = nil,
-        FlyAttachment = nil,
         LastCapture = nil,
         CapturingAction = nil,
         Profiles = {},
@@ -135,6 +147,8 @@ local BloodyBlox = {
         PendingTeleportName = nil,
         RemoteList = {},
         UI = nil,
+        WatermarkLabel = nil,
+        OriginalWalkSpeed = 16,
     },
 }
 
@@ -178,6 +192,12 @@ function BloodyBlox:DisconnectAll()
         safeDisconnect(self.Connections[i])
         self.Connections[i] = nil
     end
+end
+
+function BloodyBlox:SaveConfig()
+    task.spawn(function()
+        Config:Save("autosave")
+    end)
 end
 
 --============================================================
@@ -370,17 +390,14 @@ function Analyzer:ScanNPCs()
     local npcs = {}
     for _, object in ipairs(Workspace:GetDescendants()) do
         if object:IsA("Model") and object:FindFirstChild("Humanoid") and object:FindFirstChild("HumanoidRootPart") then
-            local name = object.Name:lower()
-            if name:find("bad") or name:find("aura") or name:find("enemy") or name:find("npc") or name:find("boss") then
-                local humanoid = object.Humanoid
-                local hrp = object.HumanoidRootPart
-                table.insert(npcs, {
-                    name = object.Name,
-                    health = humanoid.Health,
-                    maxHealth = humanoid.MaxHealth,
-                    position = hrp.Position,
-                })
-            end
+            local humanoid = object.Humanoid
+            local hrp = object.HumanoidRootPart
+            table.insert(npcs, {
+                name = object.Name,
+                health = humanoid.Health,
+                maxHealth = humanoid.MaxHealth,
+                position = hrp.Position,
+            })
         end
     end
     BloodyBlox:Log("Analyzer", "Found " .. tostring(#npcs) .. " NPCs", "info")
@@ -389,6 +406,47 @@ function Analyzer:ScanNPCs()
             index, npc.name, npc.health, npc.maxHealth, tostring(npc.position)), "info")
     end
     return npcs
+end
+
+function Analyzer:ScanTools()
+    local tools = {}
+    for _, object in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        if object:IsA("Tool") then
+            table.insert(tools, object.Name)
+        end
+    end
+    local character = BloodyBlox:GetCharacter()
+    if character then
+        for _, object in ipairs(character:GetChildren()) do
+            if object:IsA("Tool") then
+                table.insert(tools, object.Name .. " (equipped)")
+            end
+        end
+    end
+    BloodyBlox:Log("Analyzer", "Found " .. tostring(#tools) .. " tools", "info")
+    for index, name in ipairs(tools) do
+        BloodyBlox:Log("Tool", string.format("[%d] %s", index, name), "info")
+    end
+    return tools
+end
+
+function Analyzer:DumpOffsets()
+    local character = BloodyBlox:GetCharacter()
+    if not character then
+        BloodyBlox:Log("Analyzer", "Character unavailable", "error")
+        return
+    end
+
+    BloodyBlox:Log("Analyzer", "=== CHARACTER DUMP ===", "info")
+    for _, object in ipairs(character:GetDescendants()) do
+        if object:IsA("BasePart") then
+            BloodyBlox:Log("Part", string.format("%s | CFrame: %s | Size: %s",
+                object.Name, tostring(object.CFrame), tostring(object.Size)), "info")
+        elseif object:IsA("Humanoid") then
+            BloodyBlox:Log("Humanoid", string.format("HP: %.0f/%.0f | WalkSpeed: %.1f | JumpPower: %.1f",
+                object.Health, object.MaxHealth, object.WalkSpeed, object.JumpPower), "info")
+        end
+    end
 end
 
 function Analyzer:StartCapture(actionName)
@@ -639,7 +697,6 @@ function Farm:StartBadAura()
                 for _, object in ipairs(Workspace:GetDescendants()) do
                     if object:IsA("Model") and object:FindFirstChild("Humanoid") and object:FindFirstChild("HumanoidRootPart") then
                         local name = object.Name:lower()
-                        -- FIXED: Only target NPCs with "bad" in name (not "angel", "enemy", etc.)
                         if name:find("bad") then
                             local humanoid = object.Humanoid
                             local npcRoot = object.HumanoidRootPart
@@ -684,12 +741,12 @@ function Farm:StartBadAura()
         end
     end)
 
-    BloodyBlox:Log("Farm", "Bad Aura farm started (only 'bad' NPCs)", "warn")
+    BloodyBlox:Log("Farm", "Bad Aura farm started", "warn")
     return true
 end
 
 --============================================================
--- Combat
+-- Combat (NO LOGGING)
 --============================================================
 
 local Combat = {}
@@ -832,6 +889,62 @@ function Combat:ToggleFastHits(enabled)
         end)
     end)
     BloodyBlox:AddConnection(self.FastHitsConnection)
+end
+
+--============================================================
+-- Misc
+--============================================================
+
+local Misc = {}
+
+function Misc:ToggleWalkWithDumbbell(enabled)
+    BloodyBlox.Settings.WalkWithDumbbell = enabled
+
+    if self.WalkWithDumbbellConnection then
+        safeDisconnect(self.WalkWithDumbbellConnection)
+        self.WalkWithDumbbellConnection = nil
+    end
+
+    if not enabled then
+        local humanoid = BloodyBlox:GetHumanoid()
+        if humanoid then
+            humanoid.WalkSpeed = BloodyBlox.State.OriginalWalkSpeed
+        end
+        return
+    end
+
+    self.WalkWithDumbbellConnection = RunService.Heartbeat:Connect(function()
+        local humanoid = BloodyBlox:GetHumanoid()
+        if humanoid then
+            if humanoid.WalkSpeed ~= BloodyBlox.State.OriginalWalkSpeed then
+                BloodyBlox.State.OriginalWalkSpeed = humanoid.WalkSpeed
+            end
+            humanoid.WalkSpeed = 16
+        end
+    end)
+    BloodyBlox:AddConnection(self.WalkWithDumbbellConnection)
+end
+
+function Misc:ToggleFastStrafe(enabled)
+    BloodyBlox.Settings.FastStrafe = enabled
+
+    if self.FastStrafeConnection then
+        safeDisconnect(self.FastStrafeConnection)
+        self.FastStrafeConnection = nil
+    end
+
+    if not enabled then
+        return
+    end
+
+    self.FastStrafeConnection = RunService.Heartbeat:Connect(function()
+        local root = BloodyBlox:GetHRP()
+        local humanoid = BloodyBlox:GetHumanoid()
+        if root and humanoid and humanoid.MoveDirection.Magnitude > 0 then
+            root.CFrame = root.CFrame + humanoid.MoveDirection * 0.1
+        end
+    end)
+    BloodyBlox:AddConnection(self.FastStrafeConnection)
 end
 
 --============================================================
@@ -1018,24 +1131,6 @@ end
 
 local PlayerTools = {}
 
-local function calculateFlySpeed(sliderValue)
-    local value = math.clamp(tonumber(sliderValue) or 5, 1, 16)
-    if value <= 10 then
-        return value
-    else
-        local excess = value - 10
-        if excess <= 3 then
-            return 10 + (excess * 2)
-        elseif excess == 4 then
-            return 18
-        elseif excess == 5 then
-            return 19
-        else
-            return 20
-        end
-    end
-end
-
 function PlayerTools:ToggleNoclip(enabled)
     BloodyBlox.Settings.Noclip = enabled
 
@@ -1075,16 +1170,14 @@ function PlayerTools:ToggleNoclip(enabled)
 end
 
 function PlayerTools:ClearFlyObjects()
-    safeDestroy(self.FlyVelocity)
-    safeDestroy(self.FlyAttachment)
-    self.FlyVelocity = nil
-    self.FlyAttachment = nil
+    if self.FlyVelocity then
+        safeDestroy(self.FlyVelocity)
+        self.FlyVelocity = nil
+    end
 
     local root = BloodyBlox:GetHRP()
     if root then
-        local attachment = root:FindFirstChild("BloodyBloxFlyAttachment")
         local velocity = root:FindFirstChild("BloodyBloxFlyVelocity")
-        safeDestroy(attachment)
         safeDestroy(velocity)
     end
 end
@@ -1109,18 +1202,12 @@ function PlayerTools:ToggleFly(enabled)
         return
     end
 
-    local attachment = Instance.new("Attachment")
-    attachment.Name = "BloodyBloxFlyAttachment"
-    attachment.Parent = root
-
-    local velocity = Instance.new("LinearVelocity")
+    local velocity = Instance.new("BodyVelocity")
     velocity.Name = "BloodyBloxFlyVelocity"
-    velocity.Attachment0 = attachment
-    velocity.RelativeTo = Enum.ActuatorRelativeTo.World
-    velocity.VectorVelocity = Vector3.zero
+    velocity.MaxForce = Vector3.new(100000, 100000, 100000)
+    velocity.Velocity = Vector3.zero
     velocity.Parent = root
 
-    self.FlyAttachment = attachment
     self.FlyVelocity = velocity
 
     self.FlyConnection = RunService.RenderStepped:Connect(function()
@@ -1154,9 +1241,8 @@ function PlayerTools:ToggleFly(enabled)
             direction -= Vector3.yAxis
         end
 
-        local blocksPerSecond = calculateFlySpeed(BloodyBlox.Settings.FlySpeed)
-        local speed = blocksPerSecond * 50
-        self.FlyVelocity.VectorVelocity = direction * speed
+        local speed = BloodyBlox.Settings.FlySpeed * 50
+        self.FlyVelocity.Velocity = direction * speed
     end)
     BloodyBlox:AddConnection(self.FlyConnection)
 end
@@ -1204,7 +1290,7 @@ function PlayerTools:ToggleGodMode(enabled)
         end)
         BloodyBlox:AddConnection(self.GodModeConnection)
 
-        BloodyBlox:Log("Player", "God Mode active (client-side only - may not work vs server damage)", "warn")
+        BloodyBlox:Log("Player", "God Mode active (client-side only)", "warn")
         return true
     end
 
@@ -1269,7 +1355,6 @@ end
 
 function Teleport:Save()
     if not hasFilesystem() then
-        BloodyBlox:Log("Teleport", "Filesystem API unavailable", "error")
         return false
     end
 
@@ -1281,19 +1366,13 @@ function Teleport:Save()
 
     local ok, json = safeJsonEncode(BloodyBlox.TeleportPoints)
     if not ok then
-        BloodyBlox:Log("Teleport", "JSON encode failed", "error")
         return false
     end
 
     local saved, err = pcall(function()
         writefile(self:GetPath(), json)
     end)
-    if not saved then
-        BloodyBlox:Log("Teleport", "Save failed: " .. tostring(err), "error")
-        return false
-    end
-
-    return true
+    return saved
 end
 
 function Teleport:Load()
@@ -1310,7 +1389,6 @@ function Teleport:Load()
         return HttpService:JSONDecode(readfile(path))
     end)
     if not ok or type(data) ~= "table" then
-        BloodyBlox:Log("Teleport", "Teleport file invalid", "error")
         return false
     end
 
@@ -1321,7 +1399,6 @@ end
 function Teleport:Add(name)
     local root = BloodyBlox:GetHRP()
     if not root then
-        BloodyBlox:Log("Teleport", "HumanoidRootPart unavailable", "error")
         return false
     end
 
@@ -1333,7 +1410,7 @@ function Teleport:Add(name)
     })
 
     self:Save()
-    BloodyBlox:Log("Teleport", "Point saved", "info")
+    BloodyBlox:Log("Teleport", "Point saved: " .. tostring(name), "info")
     return true
 end
 
@@ -1373,13 +1450,11 @@ end
 
 function Config:Save(name)
     if not hasFilesystem() then
-        BloodyBlox:Log("Config", "Filesystem API unavailable", "error")
         return false
     end
 
     name = self:SanitizeName(name)
     if name == "" then
-        BloodyBlox:Log("Config", "Invalid config name", "error")
         return false
     end
 
@@ -1392,7 +1467,6 @@ function Config:Save(name)
 
     local ok, json = safeJsonEncode(data)
     if not ok then
-        BloodyBlox:Log("Config", "Config encode failed", "error")
         return false
     end
 
@@ -1400,30 +1474,24 @@ function Config:Save(name)
         writefile("BloodyBlox_" .. name .. ".json", json)
     end)
 
-    if not saved then
-        BloodyBlox:Log("Config", "Save failed: " .. tostring(err), "error")
-        return false
+    if saved then
+        BloodyBlox:Log("Config", "Saved: " .. name, "info")
     end
-
-    BloodyBlox:Log("Config", "Saved: " .. name, "info")
-    return true
+    return saved
 end
 
 function Config:Load(name)
     if not hasFilesystem() then
-        BloodyBlox:Log("Config", "Filesystem API unavailable", "error")
         return false
     end
 
     name = self:SanitizeName(name)
     if name == "" then
-        BloodyBlox:Log("Config", "Invalid config name", "error")
         return false
     end
 
     local path = "BloodyBlox_" .. name .. ".json"
     if not isfile(path) then
-        BloodyBlox:Log("Config", "Not found: " .. name, "error")
         return false
     end
 
@@ -1432,7 +1500,6 @@ function Config:Load(name)
     end)
 
     if not ok or type(data) ~= "table" then
-        BloodyBlox:Log("Config", "Invalid JSON", "error")
         return false
     end
 
@@ -1459,27 +1526,22 @@ end
 
 function Config:Delete(name)
     if type(isfile) ~= "function" or type(delfile) ~= "function" then
-        BloodyBlox:Log("Config", "Delete API unavailable", "error")
         return false
     end
 
     name = self:SanitizeName(name)
     local path = "BloodyBlox_" .. name .. ".json"
     if not isfile(path) then
-        BloodyBlox:Log("Config", "Not found", "error")
         return false
     end
 
     local ok, err = pcall(function()
         delfile(path)
     end)
-    if not ok then
-        BloodyBlox:Log("Config", "Delete failed: " .. tostring(err), "error")
-        return false
+    if ok then
+        BloodyBlox:Log("Config", "Deleted: " .. name, "warn")
     end
-
-    BloodyBlox:Log("Config", "Deleted: " .. name, "warn")
-    return true
+    return ok
 end
 
 --============================================================
@@ -1498,6 +1560,18 @@ local function create(className, properties, parent)
     end
     object.Parent = parent
     return object
+end
+
+function UI:UpdateScale(scale)
+    if self.Main then
+        local baseWidth = 760
+        local baseHeight = 540
+        local newWidth = baseWidth * scale
+        local newHeight = baseHeight * scale
+
+        self.Main.Size = UDim2.fromOffset(newWidth, newHeight)
+        self.Main.Position = UDim2.new(0.5, -newWidth / 2, 0.5, -newHeight / 2)
+    end
 end
 
 function UI:Create()
@@ -1582,7 +1656,51 @@ function UI:Create()
     }, self.Main)
     create("UICorner", {CornerRadius = UDim.new(0, 8)}, self.Content)
 
+    -- Watermark
+    self.Watermark = create("TextLabel", {
+        Size = UDim2.fromOffset(200, 60),
+        Position = UDim2.fromOffset(10, 10),
+        BackgroundColor3 = Color3.fromRGB(10, 10, 15),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Text = "BloodyBlox v" .. BloodyBlox.Version .. "\nFPS: 0",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        Visible = BloodyBlox.Settings.ShowWatermark,
+    }, self.Gui)
+    create("UICorner", {CornerRadius = UDim.new(0, 8)}, self.Watermark)
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 5),
+        PaddingBottom = UDim.new(0, 5),
+        PaddingLeft = UDim.new(0, 8),
+        PaddingRight = UDim.new(0, 8),
+    }, self.Watermark)
+
+    BloodyBlox.State.WatermarkLabel = self.Watermark
     BloodyBlox.State.UI = self
+
+    -- FPS counter
+    local lastTime = os.clock()
+    local frameCount = 0
+    local fps = 0
+
+    RunService.RenderStepped:Connect(function()
+        frameCount = frameCount + 1
+        local currentTime = os.clock()
+        if currentTime - lastTime >= 1 then
+            fps = frameCount
+            frameCount = 0
+            lastTime = currentTime
+
+            if self.Watermark and BloodyBlox.Settings.ShowWatermark then
+                self.Watermark.Text = string.format("BloodyBlox v%s\nFPS: %d", BloodyBlox.Version, fps)
+            end
+        end
+    end)
+
     return self
 end
 
@@ -1756,6 +1874,69 @@ function UI:AddNumberBox(tab, placeholder, default, callback)
     end)
 end
 
+function UI:AddSlider(tab, text, min, max, default, callback)
+    local frame = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 50),
+        BackgroundColor3 = Color3.fromRGB(35, 35, 42),
+        BorderSizePixel = 0,
+    }, tab.Page)
+    create("UICorner", {CornerRadius = UDim.new(0, 6)}, frame)
+
+    local label = create("TextLabel", {
+        Size = UDim2.new(1, -10, 0, 20),
+        Position = UDim2.fromOffset(5, 3),
+        BackgroundTransparency = 1,
+        Text = string.format("%s: %.2f", text, default),
+        TextColor3 = Color3.fromRGB(225, 225, 225),
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, frame)
+
+    local sliderBg = create("Frame", {
+        Size = UDim2.new(1, -20, 0, 8),
+        Position = UDim2.new(0, 10, 1, -15),
+        BackgroundColor3 = Color3.fromRGB(60, 60, 65),
+        BorderSizePixel = 0,
+    }, frame)
+    create("UICorner", {CornerRadius = UDim.new(0, 4)}, sliderBg)
+
+    local value = default
+    local sliderFill = create("Frame", {
+        Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = Color3.fromRGB(139, 0, 0),
+        BorderSizePixel = 0,
+    }, sliderBg)
+    create("UICorner", {CornerRadius = UDim.new(0, 4)}, sliderFill)
+
+    local dragging = false
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+        end
+    end)
+
+    sliderBg.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mouse = UserInputService:GetMouseLocation()
+            local relativeX = mouse.X - sliderBg.AbsolutePosition.X
+            local percent = math.clamp(relativeX / sliderBg.AbsoluteSize.X, 0, 1)
+            value = min + (max - min) * percent
+            sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+            label.Text = string.format("%s: %.2f", text, value)
+            callback(value)
+        end
+    end)
+
+    return frame
+end
+
 function UI:CreateLogContainer(page)
     local existing = page:FindFirstChild("LogEntries")
     if existing then
@@ -1831,6 +2012,7 @@ function UI:Destroy()
     self.Main = nil
     self.Sidebar = nil
     self.Content = nil
+    self.Watermark = nil
 end
 
 --============================================================
@@ -1842,30 +2024,6 @@ Teleport:Load()
 Analyzer:LoadProfiles()
 Analyzer:InstallHook()
 
-local MainTab = UI:AddTab("Main")
-UI:AddLabel(MainTab, "Local tools work independently. Game actions require real captured calls.")
-UI:AddButton(MainTab, "Analyze Remotes", function()
-    Analyzer:ScanRemotes()
-end)
-UI:AddButton(MainTab, "Scan NPCs", function()
-    Analyzer:ScanNPCs()
-end)
-UI:AddButton(MainTab, "Save Profiles", function()
-    Analyzer:SaveProfiles()
-end)
-UI:AddButton(MainTab, "Run Weight Once", function()
-    Analyzer:RunProfile("Weight")
-end)
-UI:AddButton(MainTab, "Run Durability Once", function()
-    Analyzer:RunProfile("Durability")
-end)
-UI:AddButton(MainTab, "Run Rebirth Once", function()
-    Analyzer:RunProfile("Rebirth")
-end)
-UI:AddButton(MainTab, "Run Combat Once", function()
-    Analyzer:RunProfile("Combat")
-end)
-
 local FarmTab = UI:AddTab("Farm")
 UI:AddToggle(FarmTab, "Weight Farm", false, function(state)
     BloodyBlox.Settings.WeightFarm = state
@@ -1874,9 +2032,11 @@ UI:AddToggle(FarmTab, "Weight Farm", false, function(state)
     else
         Farm:Stop("Weight")
     end
+    BloodyBlox:SaveConfig()
 end)
 UI:AddNumberBox(FarmTab, "Weight interval", 0.25, function(value)
     BloodyBlox.Settings.WeightInterval = math.max(0.05, value)
+    BloodyBlox:SaveConfig()
 end)
 
 UI:AddToggle(FarmTab, "Durability Farm", false, function(state)
@@ -1886,9 +2046,11 @@ UI:AddToggle(FarmTab, "Durability Farm", false, function(state)
     else
         Farm:Stop("Durability")
     end
+    BloodyBlox:SaveConfig()
 end)
 UI:AddNumberBox(FarmTab, "Durability interval", 0.25, function(value)
     BloodyBlox.Settings.DurabilityInterval = math.max(0.05, value)
+    BloodyBlox:SaveConfig()
 end)
 
 UI:AddToggle(FarmTab, "Auto Rebirth", false, function(state)
@@ -1898,9 +2060,11 @@ UI:AddToggle(FarmTab, "Auto Rebirth", false, function(state)
     else
         Farm:Stop("Rebirth")
     end
+    BloodyBlox:SaveConfig()
 end)
 UI:AddNumberBox(FarmTab, "Rebirth interval", 2, function(value)
     BloodyBlox.Settings.RebirthInterval = math.max(0.1, value)
+    BloodyBlox:SaveConfig()
 end)
 
 UI:AddToggle(FarmTab, "Combat Farm", false, function(state)
@@ -1910,9 +2074,11 @@ UI:AddToggle(FarmTab, "Combat Farm", false, function(state)
     else
         Farm:Stop("Combat")
     end
+    BloodyBlox:SaveConfig()
 end)
 UI:AddNumberBox(FarmTab, "Combat interval", 0.25, function(value)
     BloodyBlox.Settings.CombatInterval = math.max(0.05, value)
+    BloodyBlox:SaveConfig()
 end)
 
 UI:AddToggle(FarmTab, "Bad Aura Farm", false, function(state)
@@ -1922,23 +2088,29 @@ UI:AddToggle(FarmTab, "Bad Aura Farm", false, function(state)
     else
         Farm:Stop("BadAura")
     end
+    BloodyBlox:SaveConfig()
 end)
 UI:AddNumberBox(FarmTab, "Bad Aura interval", 0.1, function(value)
     BloodyBlox.Settings.BadAuraInterval = math.max(0.05, value)
+    BloodyBlox:SaveConfig()
 end)
 
 local CombatTab = UI:AddTab("Combat")
 UI:AddToggle(CombatTab, "Anti-Aim", false, function(state)
     Combat:ToggleAntiAim(state)
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(CombatTab, "Kill Aura", false, function(state)
     Combat:ToggleKillAura(state)
+    BloodyBlox:SaveConfig()
 end)
 UI:AddNumberBox(CombatTab, "Kill Aura Radius", 20, function(value)
     BloodyBlox.Settings.KillAuraRadius = math.max(5, value)
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(CombatTab, "Fast Hits", false, function(state)
     Combat:ToggleFastHits(state)
+    BloodyBlox:SaveConfig()
 end)
 
 local AnalyzerTab = UI:AddTab("Analyzer")
@@ -1946,14 +2118,24 @@ UI:AddToggle(AnalyzerTab, "Remote Spy (Log ALL remotes)", false, function(state)
     BloodyBlox.Settings.RemoteSpyEnabled = state
     if state then
         Analyzer:InstallHook()
-        BloodyBlox:Log("RemoteSpy", "Continuous logging enabled - ALL FireServer/InvokeServer calls will be logged", "warn")
+        BloodyBlox:Log("RemoteSpy", "Continuous logging enabled", "warn")
     else
         BloodyBlox:Log("RemoteSpy", "Continuous logging disabled", "info")
     end
+    BloodyBlox:SaveConfig()
 end)
-UI:AddLabel(AnalyzerTab, "Press Capture, then perform exactly one action manually. The next client remote call becomes the profile.")
+UI:AddLabel(AnalyzerTab, "Capture: perform action manually. Next client remote call becomes the profile.")
 UI:AddButton(AnalyzerTab, "Scan Remotes", function()
     Analyzer:ScanRemotes()
+end)
+UI:AddButton(AnalyzerTab, "Scan NPCs", function()
+    Analyzer:ScanNPCs()
+end)
+UI:AddButton(AnalyzerTab, "Scan Tools", function()
+    Analyzer:ScanTools()
+end)
+UI:AddButton(AnalyzerTab, "Dump Character Offsets", function()
+    Analyzer:DumpOffsets()
 end)
 UI:AddButton(AnalyzerTab, "Capture Next Weight", function()
     Analyzer:StartCapture("Weight")
@@ -1983,50 +2165,70 @@ UI:AddButton(AnalyzerTab, "Save Profiles", function()
     Analyzer:SaveProfiles()
 end)
 
+local MiscTab = UI:AddTab("Misc")
+UI:AddToggle(MiscTab, "Walk With Dumbbell", false, function(state)
+    Misc:ToggleWalkWithDumbbell(state)
+    BloodyBlox:SaveConfig()
+end)
+UI:AddToggle(MiscTab, "Fast Strafe", false, function(state)
+    Misc:ToggleFastStrafe(state)
+    BloodyBlox:SaveConfig()
+end)
+
 local VisualTab = UI:AddTab("Visual")
 UI:AddToggle(VisualTab, "ESP", false, function(state)
     ESP:Toggle(state)
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(VisualTab, "Boxes", true, function(state)
     BloodyBlox.Settings.ESPBoxes = state
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(VisualTab, "Names", true, function(state)
     BloodyBlox.Settings.ESPNames = state
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(VisualTab, "Distance", true, function(state)
     BloodyBlox.Settings.ESPDistance = state
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(VisualTab, "Health", true, function(state)
     BloodyBlox.Settings.ESPHealth = state
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(VisualTab, "Tracers", false, function(state)
     BloodyBlox.Settings.ESPTracers = state
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(VisualTab, "Team Check", false, function(state)
     BloodyBlox.Settings.ESPTeamCheck = state
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(VisualTab, "Fullbright", false, function(state)
     PlayerTools:ToggleFullbright(state)
+    BloodyBlox:SaveConfig()
 end)
 
 local PlayerTab = UI:AddTab("Player")
 UI:AddToggle(PlayerTab, "Fly", false, function(state)
     PlayerTools:ToggleFly(state)
+    BloodyBlox:SaveConfig()
 end)
-UI:AddNumberBox(PlayerTab, "Fly speed (1-16)", 5, function(value)
+UI:AddNumberBox(PlayerTab, "Fly speed", 5, function(value)
     BloodyBlox.Settings.FlySpeed = math.clamp(value, 1, 16)
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(PlayerTab, "Noclip", false, function(state)
     PlayerTools:ToggleNoclip(state)
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(PlayerTab, "Infinite Jump", false, function(state)
     PlayerTools:ToggleInfiniteJump(state)
+    BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(PlayerTab, "God Mode (Client-Side)", false, function(state)
     PlayerTools:ToggleGodMode(state)
-end)
-UI:AddToggle(PlayerTab, "Anti-AFK", true, function(state)
-    BloodyBlox.Settings.AntiAFK = state
+    BloodyBlox:SaveConfig()
 end)
 
 local TeleportTab = UI:AddTab("Teleport")
@@ -2039,7 +2241,7 @@ end)
 UI:AddButton(TeleportTab, "Rebuild Saved Points", function()
     Teleport:Load()
     UI:SelectTab(TeleportTab)
-    BloodyBlox:Log("Teleport", "Reloaded saved points. Restart is not required.", "info")
+    BloodyBlox:Log("Teleport", "Reloaded saved points", "info")
 end)
 
 for index, point in ipairs(BloodyBlox.TeleportPoints) do
@@ -2078,14 +2280,25 @@ UI:AddButton(LogsTab, "Copy All", function()
             setclipboard(text)
         end)
         BloodyBlox:Log("Logs", "Copied to clipboard", "info")
-        else
+    else
         BloodyBlox:Log("Logs", "setclipboard unavailable", "error")
     end
 end)
 local LogContainer = UI:CreateLogContainer(LogsTab.Page)
-UI:AddLabel(LogsTab, "Refresh updates only the log list. The buttons/layout are never destroyed.")
 
 local SettingsTab = UI:AddTab("Settings")
+UI:AddToggle(SettingsTab, "Show Watermark", true, function(state)
+    BloodyBlox.Settings.ShowWatermark = state
+    if UI.Watermark then
+        UI.Watermark.Visible = state
+    end
+    BloodyBlox:SaveConfig()
+end)
+UI:AddSlider(SettingsTab, "Menu Scale", 0.5, 3.0, 1.0, function(value)
+    BloodyBlox.Settings.MenuScale = value
+    UI:UpdateScale(value)
+    BloodyBlox:SaveConfig()
+end)
 UI:AddButton(SettingsTab, "Disable All", function()
     BloodyBlox.Settings.ESP = false
     BloodyBlox.Settings.Fly = false
@@ -2100,6 +2313,8 @@ UI:AddButton(SettingsTab, "Disable All", function()
     BloodyBlox.Settings.AntiAim = false
     BloodyBlox.Settings.KillAura = false
     BloodyBlox.Settings.FastHits = false
+    BloodyBlox.Settings.WalkWithDumbbell = false
+    BloodyBlox.Settings.FastStrafe = false
 
     Farm:Stop("Weight")
     Farm:Stop("Durability")
@@ -2111,10 +2326,15 @@ UI:AddButton(SettingsTab, "Disable All", function()
     Combat:ToggleKillAura(false)
     Combat:ToggleFastHits(false)
 
+    Misc:ToggleWalkWithDumbbell(false)
+    Misc:ToggleFastStrafe(false)
+
     ESP:Toggle(false)
     PlayerTools:ToggleFly(false)
     PlayerTools:ToggleNoclip(false)
     PlayerTools:ToggleFullbright(false)
+
+    BloodyBlox:SaveConfig()
 end)
 UI:AddButton(SettingsTab, "EXIT", function()
     BloodyBlox.MenuOpen = false
@@ -2129,6 +2349,9 @@ UI:AddButton(SettingsTab, "EXIT", function()
     Combat:ToggleKillAura(false)
     Combat:ToggleFastHits(false)
 
+    Misc:ToggleWalkWithDumbbell(false)
+    Misc:ToggleFastStrafe(false)
+
     ESP:Toggle(false)
     PlayerTools:ToggleFly(false)
     PlayerTools:ToggleNoclip(false)
@@ -2142,7 +2365,7 @@ end)
 UI:AddLabel(SettingsTab, "Insert = toggle menu")
 
 --============================================================
--- Runtime
+-- Runtime (Anti-AFK hidden but active)
 --============================================================
 
 BloodyBlox:AddConnection(UserInputService.InputBegan:Connect(function(input, processed)
@@ -2183,13 +2406,12 @@ BloodyBlox:AddConnection(Players.PlayerRemoving:Connect(function(player)
     ESP:Remove(player)
 end))
 
+-- Anti-AFK (always active, no UI toggle)
 BloodyBlox:AddConnection(LocalPlayer.Idled:Connect(function()
-    if BloodyBlox.Settings.AntiAFK then
-        pcall(function()
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton2(Vector2.new(0, 0))
-        end)
-    end
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new(0, 0))
+    end)
 end))
 
 BloodyBlox:AddConnection(LocalPlayer.CharacterAdded:Connect(function()
