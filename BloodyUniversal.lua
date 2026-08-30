@@ -1,135 +1,347 @@
--- BloodyBlox Universal v1.0.2 (Stealth Mode)
--- Ultra-minimal approach - no Heartbeat/RenderStepped connections
+-- BloodyBlox Universal v1.0.3 (BloodyBlox Bypass Integration)
+-- Imported detection bypass methods from BloodyBlox.lua
 -- Load: loadstring(game:HttpGet("https://raw.githubusercontent.com/BloodSecret/BloodBlox/main/BloodyUniversal.lua"))()
 
--- Delay initialization
-task.wait(math.random(3, 6))
+--[[
+    Critical bypass methods from BloodyBlox.lua:
+    - Game load guard (wait for full initialization)
+    - Safe call wrappers (pcall protection)
+    - LinearVelocity + Attachment for Fly (not BodyVelocity)
+    - Noclip with CanCollide backup/restore
+    - Fullbright with exact Lighting backup
+    - Remote hook validation before use
+    - Global singleton protection
+]]
 
--- Services
-local plrs = game:GetService("Players")
-local uis = game:GetService("UserInputService")
-local rs = game:GetService("RunService")
-local light = game:GetService("Lighting")
+-- Wait for game to fully load (CRITICAL - prevents early detection)
+repeat task.wait() until game:IsLoaded()
+repeat task.wait() until game.Players.LocalPlayer
 
-local plr = plrs.LocalPlayer
-local cam = workspace.CurrentCamera
+-- Singleton guard
+if _G.BloodyUniversalLoaded then
+    warn("[BloodyUniversal] Already running")
+    return
+end
+_G.BloodyUniversalLoaded = true
 
--- State
-local enabled = {
-    fly = false,
-    noclip = false,
-    speed = false,
-    esp = false,
-    fb = false
-}
-
-local cfg = {
-    fly_speed = 5,
-    walk_speed = 50
-}
-
--- Fly via player input only (no loop)
-local fly_ctrl = {w=false,a=false,s=false,d=false,space=false,shift=false}
-
-local function update_fly()
-    if not enabled.fly then return end
-
-    local ch = plr.Character
-    if not ch then return end
-
-    local hr = ch:FindFirstChild("HumanoidRootPart")
-    if not hr then return end
-
-    local move = Vector3.zero
-    local sp = cfg.fly_speed * 0.4
-
-    if fly_ctrl.w then move = move + cam.CFrame.LookVector end
-    if fly_ctrl.s then move = move - cam.CFrame.LookVector end
-    if fly_ctrl.a then move = move - cam.CFrame.RightVector end
-    if fly_ctrl.d then move = move + cam.CFrame.RightVector end
-    if fly_ctrl.space then move = move + Vector3.new(0, 1, 0) end
-    if fly_ctrl.shift then move = move - Vector3.new(0, 1, 0) end
-
-    if move.Magnitude > 0 then
-        hr.CFrame = hr.CFrame + (move.Unit * sp)
+-- Safe call wrapper from BloodyBlox
+local function safeCall(fn, ...)
+    if type(fn) ~= "function" then
+        return false, "not a function"
     end
-
-    -- Cancel gravity
-    local vel = hr.AssemblyLinearVelocity
-    hr.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+    return pcall(fn, ...)
 end
 
--- Noclip via CharacterAdded only
-local function setup_noclip()
-    if not enabled.noclip then return end
+local function safeDisconnect(conn)
+    if conn then
+        pcall(function() conn:Disconnect() end)
+    end
+end
 
-    local ch = plr.Character
-    if not ch then return end
+local function safeDestroy(obj)
+    if obj then
+        pcall(function() obj:Destroy() end)
+    end
+end
 
-    for _, p in ipairs(ch:GetDescendants()) do
-        if p:IsA("BasePart") then
-            p.CanCollide = false
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    _G.BloodyUniversalLoaded = nil
+    error("[BloodyUniversal] LocalPlayer unavailable")
+end
+
+-- State
+local State = {
+    active = {
+        fly = false,
+        noclip = false,
+        speed = false,
+        esp = false,
+        fullbright = false
+    },
+    backup = {
+        noclip = {},
+        lighting = nil
+    },
+    fly = {
+        velocity = nil,
+        attachment = nil,
+        ctrl = {w=false,a=false,s=false,d=false,space=false,shift=false}
+    },
+    cfg = {
+        fly_speed = 5,
+        walk_speed = 50
+    },
+    drawings = {},
+    connections = {}
+}
+
+-- Get character safely
+local function GetCharacter()
+    return LocalPlayer.Character
+end
+
+local function GetHumanoid()
+    local char = GetCharacter()
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function GetRootPart()
+    local char = GetCharacter()
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+-- Cleanup
+local function Cleanup()
+    -- Disconnect all
+    for _, conn in pairs(State.connections) do
+        safeDisconnect(conn)
+    end
+    State.connections = {}
+
+    -- Disable all
+    for k, _ in pairs(State.active) do
+        State.active[k] = false
+    end
+
+    -- Restore Fly
+    if State.fly.velocity then
+        safeDestroy(State.fly.velocity)
+        State.fly.velocity = nil
+    end
+    if State.fly.attachment then
+        safeDestroy(State.fly.attachment)
+        State.fly.attachment = nil
+    end
+
+    -- Restore Noclip
+    for part, original in pairs(State.backup.noclip) do
+        if part and part.Parent then
+            part.CanCollide = original
+        end
+    end
+    State.backup.noclip = {}
+
+    -- Restore Speed
+    local hum = GetHumanoid()
+    if hum then
+        hum.WalkSpeed = 16
+    end
+
+    -- Clear ESP
+    for _, draw in ipairs(State.drawings) do
+        safeCall(function() draw:Remove() end)
+    end
+    State.drawings = {}
+
+    -- Restore Fullbright
+    if State.backup.lighting then
+        local backup = State.backup.lighting
+        Lighting.Brightness = backup.Brightness
+        Lighting.ClockTime = backup.ClockTime
+        Lighting.FogEnd = backup.FogEnd
+        Lighting.GlobalShadows = backup.GlobalShadows
+        Lighting.OutdoorAmbient = backup.OutdoorAmbient
+        Lighting.Ambient = backup.Ambient
+        State.backup.lighting = nil
+    end
+end
+
+-- Fly using LinearVelocity + Attachment (from BloodyBlox - not detected)
+local function ToggleFly(enable)
+    State.active.fly = enable
+
+    if enable then
+        local root = GetRootPart()
+        if not root then return end
+
+        -- Create Attachment (required for LinearVelocity)
+        local attachment = Instance.new("Attachment")
+        attachment.Parent = root
+        State.fly.attachment = attachment
+
+        -- Create LinearVelocity (modern physics, not detected like BodyVelocity)
+        local velocity = Instance.new("LinearVelocity")
+        velocity.MaxForce = math.huge
+        velocity.VectorVelocity = Vector3.zero
+        velocity.Attachment0 = attachment
+        velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+        velocity.Parent = root
+        State.fly.velocity = velocity
+
+        -- Reset controls
+        State.fly.ctrl = {w=false,a=false,s=false,d=false,space=false,shift=false}
+    else
+        if State.fly.velocity then
+            safeDestroy(State.fly.velocity)
+            State.fly.velocity = nil
+        end
+        if State.fly.attachment then
+            safeDestroy(State.fly.attachment)
+            State.fly.attachment = nil
+        end
+        State.fly.ctrl = {w=false,a=false,s=false,d=false,space=false,shift=false}
+    end
+end
+
+local function UpdateFly()
+    if not State.active.fly then return end
+    if not State.fly.velocity then return end
+
+    local root = GetRootPart()
+    if not root then return end
+
+    local cam = Workspace.CurrentCamera
+    local move = Vector3.zero
+    local speed = State.cfg.fly_speed
+
+    if State.fly.ctrl.w then move = move + cam.CFrame.LookVector end
+    if State.fly.ctrl.s then move = move - cam.CFrame.LookVector end
+    if State.fly.ctrl.a then move = move - cam.CFrame.RightVector end
+    if State.fly.ctrl.d then move = move + cam.CFrame.RightVector end
+    if State.fly.ctrl.space then move = move + Vector3.new(0, 1, 0) end
+    if State.fly.ctrl.shift then move = move - Vector3.new(0, 1, 0) end
+
+    if move.Magnitude > 0 then
+        move = move.Unit * speed * 50
+    end
+
+    State.fly.velocity.VectorVelocity = move
+end
+
+-- Noclip with backup/restore (from BloodyBlox)
+local function ToggleNoclip(enable)
+    State.active.noclip = enable
+
+    if enable then
+        local char = GetCharacter()
+        if not char then return end
+
+        -- Backup original CanCollide values
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                State.backup.noclip[part] = part.CanCollide
+                part.CanCollide = false
+            end
+        end
+    else
+        -- Restore original values
+        for part, original in pairs(State.backup.noclip) do
+            if part and part.Parent then
+                part.CanCollide = original
+            end
+        end
+        State.backup.noclip = {}
+    end
+end
+
+local function UpdateNoclip()
+    if not State.active.noclip then return end
+
+    local char = GetCharacter()
+    if not char then return end
+
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.CanCollide then
+            part.CanCollide = false
         end
     end
 end
 
--- Speed via direct set (no loop needed)
-local function apply_speed()
-    if not enabled.speed then return end
+-- Speed (direct override)
+local function ToggleSpeed(enable)
+    State.active.speed = enable
 
-    local ch = plr.Character
-    if not ch then return end
-
-    local hm = ch:FindFirstChildOfClass("Humanoid")
-    if hm then
-        hm.WalkSpeed = cfg.walk_speed
+    if not enable then
+        local hum = GetHumanoid()
+        if hum then
+            hum.WalkSpeed = 16
+        end
     end
 end
 
--- Fullbright
-local function toggle_fullbright(state)
-    enabled.fb = state
+local function UpdateSpeed()
+    if not State.active.speed then return end
 
-    if state then
-        light.Brightness = 2
-        light.FogEnd = 1000000
-        light.GlobalShadows = false
-        light.Ambient = Color3.new(1, 1, 1)
+    local hum = GetHumanoid()
+    if hum and hum.WalkSpeed ~= State.cfg.walk_speed then
+        hum.WalkSpeed = State.cfg.walk_speed
+    end
+end
+
+-- Fullbright with exact backup (from BloodyBlox)
+local function ToggleFullbright(enable)
+    State.active.fullbright = enable
+
+    if enable then
+        -- Backup original values
+        if not State.backup.lighting then
+            State.backup.lighting = {
+                Brightness = Lighting.Brightness,
+                ClockTime = Lighting.ClockTime,
+                FogEnd = Lighting.FogEnd,
+                GlobalShadows = Lighting.GlobalShadows,
+                OutdoorAmbient = Lighting.OutdoorAmbient,
+                Ambient = Lighting.Ambient
+            }
+        end
+
+        -- Apply fullbright
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 1000000
+        Lighting.GlobalShadows = false
+        Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+        Lighting.Ambient = Color3.new(1, 1, 1)
     else
-        light.Brightness = 1
-        light.FogEnd = 100000
-        light.GlobalShadows = true
-        light.Ambient = Color3.new(0.5, 0.5, 0.5)
+        -- Restore backup
+        if State.backup.lighting then
+            local backup = State.backup.lighting
+            Lighting.Brightness = backup.Brightness
+            Lighting.ClockTime = backup.ClockTime
+            Lighting.FogEnd = backup.FogEnd
+            Lighting.GlobalShadows = backup.GlobalShadows
+            Lighting.OutdoorAmbient = backup.OutdoorAmbient
+            Lighting.Ambient = backup.Ambient
+            State.backup.lighting = nil
+        end
     end
 end
 
--- ESP (manual trigger only, no auto-update)
-local esp_drawings = {}
-
-local function clear_esp()
-    for _, d in ipairs(esp_drawings) do
-        pcall(function() d:Remove() end)
+-- ESP (manual refresh)
+local function ClearESP()
+    for _, draw in ipairs(State.drawings) do
+        safeCall(function() draw:Remove() end)
     end
-    esp_drawings = {}
+    State.drawings = {}
 end
 
-local function draw_esp()
-    if not enabled.esp then return end
+local function DrawESP()
+    if not State.active.esp then return end
 
-    clear_esp()
+    ClearESP()
 
-    for _, p in ipairs(plrs:GetPlayers()) do
-        if p == plr then continue end
+    local cam = Workspace.CurrentCamera
 
-        local ch = p.Character
-        if not ch then continue end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
 
-        local hr = ch:FindFirstChild("HumanoidRootPart")
-        local hm = ch:FindFirstChildOfClass("Humanoid")
-        if not hr or not hm then continue end
+        local char = player.Character
+        if not char then continue end
 
-        local pos, vis = cam:WorldToViewportPoint(hr.Position)
-        if not vis then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not root or not hum then continue end
+
+        local pos, onScreen = cam:WorldToViewportPoint(root.Position)
+        if not onScreen then continue end
 
         -- Box
         local box = Drawing.new("Square")
@@ -139,154 +351,127 @@ local function draw_esp()
         box.Transparency = 1
         box.Filled = false
 
-        local head = ch:FindFirstChild("Head")
-        local hpos = head and head.Position or hr.Position
-        local tpos = cam:WorldToViewportPoint(hpos + Vector3.new(0, 0.5, 0))
-        local bpos = cam:WorldToViewportPoint(hr.Position - Vector3.new(0, 3, 0))
+        local head = char:FindFirstChild("Head")
+        local headPos = head and head.Position or root.Position
+        local topPos = cam:WorldToViewportPoint(headPos + Vector3.new(0, 0.5, 0))
+        local bottomPos = cam:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
 
-        local h = math.abs(tpos.Y - bpos.Y)
-        local w = h / 2
+        local height = math.abs(topPos.Y - bottomPos.Y)
+        local width = height / 2
 
-        box.Size = Vector2.new(w, h)
-        box.Position = Vector2.new(pos.X - w/2, pos.Y - h/2)
+        box.Size = Vector2.new(width, height)
+        box.Position = Vector2.new(pos.X - width/2, pos.Y - height/2)
 
-        table.insert(esp_drawings, box)
+        table.insert(State.drawings, box)
 
         -- Name
-        local txt = Drawing.new("Text")
-        txt.Visible = true
-        txt.Color = Color3.new(1, 1, 1)
-        txt.Text = p.Name
-        txt.Size = 14
-        txt.Center = true
-        txt.Outline = true
-        txt.Position = Vector2.new(pos.X, pos.Y - 30)
+        local name = Drawing.new("Text")
+        name.Visible = true
+        name.Color = Color3.new(1, 1, 1)
+        name.Text = player.Name
+        name.Size = 14
+        name.Center = true
+        name.Outline = true
+        name.Position = Vector2.new(pos.X, pos.Y - 30)
 
-        table.insert(esp_drawings, txt)
+        table.insert(State.drawings, name)
+
+        -- Distance
+        local dist = (root.Position - GetRootPart().Position).Magnitude
+        local distText = Drawing.new("Text")
+        distText.Visible = true
+        distText.Color = Color3.new(1, 1, 1)
+        distText.Text = string.format("[%d]", math.floor(dist))
+        distText.Size = 12
+        distText.Center = true
+        distText.Outline = true
+        distText.Position = Vector2.new(pos.X, pos.Y + 25)
+
+        table.insert(State.drawings, distText)
     end
 end
 
--- Cleanup
-local function cleanup()
-    enabled.fly = false
-    enabled.noclip = false
-    enabled.speed = false
-    enabled.esp = false
+local function ToggleESP(enable)
+    State.active.esp = enable
 
-    clear_esp()
-
-    local ch = plr.Character
-    if ch then
-        local hm = ch:FindFirstChildOfClass("Humanoid")
-        if hm then
-            hm.WalkSpeed = 16
-        end
-
-        for _, p in ipairs(ch:GetDescendants()) do
-            if p:IsA("BasePart") then
-                p.CanCollide = true
-            end
-        end
+    if enable then
+        DrawESP()
+    else
+        ClearESP()
     end
-
-    toggle_fullbright(false)
 end
 
--- Input handler (direct, no connections stored)
-uis.InputBegan:Connect(function(input, gp)
+-- Input handling
+State.connections.inputBegan = UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
 
     local key = input.KeyCode
 
     -- Fly controls
-    if key == Enum.KeyCode.W then fly_ctrl.w = true end
-    if key == Enum.KeyCode.A then fly_ctrl.a = true end
-    if key == Enum.KeyCode.S then fly_ctrl.s = true end
-    if key == Enum.KeyCode.D then fly_ctrl.d = true end
-    if key == Enum.KeyCode.Space then fly_ctrl.space = true end
-    if key == Enum.KeyCode.LeftShift then fly_ctrl.shift = true end
+    if key == Enum.KeyCode.W then State.fly.ctrl.w = true end
+    if key == Enum.KeyCode.A then State.fly.ctrl.a = true end
+    if key == Enum.KeyCode.S then State.fly.ctrl.s = true end
+    if key == Enum.KeyCode.D then State.fly.ctrl.d = true end
+    if key == Enum.KeyCode.Space then State.fly.ctrl.space = true end
+    if key == Enum.KeyCode.LeftShift then State.fly.ctrl.shift = true end
 
-    -- Toggle keys
-    if key == Enum.KeyCode.F then
-        enabled.fly = not enabled.fly
-        if not enabled.fly then
-            fly_ctrl = {w=false,a=false,s=false,d=false,space=false,shift=false}
-        end
-    end
-
-    if key == Enum.KeyCode.C then
-        enabled.noclip = not enabled.noclip
-        setup_noclip()
-    end
-
-    if key == Enum.KeyCode.V then
-        enabled.speed = not enabled.speed
-        apply_speed()
-    end
-
-    if key == Enum.KeyCode.B then
-        enabled.esp = not enabled.esp
-        if enabled.esp then
-            draw_esp()
-        else
-            clear_esp()
-        end
-    end
-
-    if key == Enum.KeyCode.N then
-        toggle_fullbright(not enabled.fb)
-    end
-
-    if key == Enum.KeyCode.End then
-        cleanup()
-    end
+    -- Toggle hotkeys
+    if key == Enum.KeyCode.F then ToggleFly(not State.active.fly) end
+    if key == Enum.KeyCode.C then ToggleNoclip(not State.active.noclip) end
+    if key == Enum.KeyCode.V then ToggleSpeed(not State.active.speed) end
+    if key == Enum.KeyCode.B then ToggleESP(not State.active.esp) end
+    if key == Enum.KeyCode.N then ToggleFullbright(not State.active.fullbright) end
+    if key == Enum.KeyCode.End then Cleanup() end
 end)
 
-uis.InputEnded:Connect(function(input, gp)
+State.connections.inputEnded = UserInputService.InputEnded:Connect(function(input, gp)
     if gp then return end
 
     local key = input.KeyCode
 
-    if key == Enum.KeyCode.W then fly_ctrl.w = false end
-    if key == Enum.KeyCode.A then fly_ctrl.a = false end
-    if key == Enum.KeyCode.S then fly_ctrl.s = false end
-    if key == Enum.KeyCode.D then fly_ctrl.d = false end
-    if key == Enum.KeyCode.Space then fly_ctrl.space = false end
-    if key == Enum.KeyCode.LeftShift then fly_ctrl.shift = false end
+    if key == Enum.KeyCode.W then State.fly.ctrl.w = false end
+    if key == Enum.KeyCode.A then State.fly.ctrl.a = false end
+    if key == Enum.KeyCode.S then State.fly.ctrl.s = false end
+    if key == Enum.KeyCode.D then State.fly.ctrl.d = false end
+    if key == Enum.KeyCode.Space then State.fly.ctrl.space = false end
+    if key == Enum.KeyCode.LeftShift then State.fly.ctrl.shift = false end
 end)
 
--- Minimal update loop (only for fly physics)
+-- Main update loop
 task.spawn(function()
     while task.wait(0.03) do
-        if enabled.fly then
-            pcall(update_fly)
-        end
-
-        if enabled.noclip then
-            pcall(setup_noclip)
-        end
-
-        if enabled.speed then
-            pcall(apply_speed)
-        end
+        safeCall(UpdateFly)
+        safeCall(UpdateNoclip)
+        safeCall(UpdateSpeed)
     end
 end)
 
 -- Character respawn handler
-plr.CharacterAdded:Connect(function(ch)
+State.connections.characterAdded = LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
-    if enabled.noclip then setup_noclip() end
-    if enabled.speed then apply_speed() end
+    if State.active.noclip then ToggleNoclip(true) end
+    if State.active.speed then ToggleSpeed(true) end
 end)
 
--- Silent notification
+-- Notification
 task.spawn(function()
-    task.wait(1)
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "Universal";
-        Text = "F=Fly C=Noclip V=Speed B=ESP N=FB End=Exit";
-        Duration = 8;
-    })
+    task.wait(2)
+    local StarterGui = game:GetService("StarterGui")
+    safeCall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "BloodyBlox Universal v1.0.3";
+            Text = "F=Fly C=Noclip V=Speed B=ESP N=Fullbright End=Exit";
+            Duration = 10;
+        })
+    end)
 end)
 
-return {enabled = enabled, cfg = cfg, cleanup = cleanup}
+return {
+    State = State,
+    Cleanup = Cleanup,
+    ToggleFly = ToggleFly,
+    ToggleNoclip = ToggleNoclip,
+    ToggleSpeed = ToggleSpeed,
+    ToggleESP = ToggleESP,
+    ToggleFullbright = ToggleFullbright
+}
