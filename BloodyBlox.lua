@@ -1,5 +1,5 @@
 --[[
-    BloodyBlox v0.5.1
+    BloodyBlox v0.5.2
     Muscle Legends helper / analyzer
 
     Core fixes:
@@ -14,6 +14,8 @@
     - Remote captures serialize arrays/dictionaries/Instances without guessing arguments.
     - Game load guard prevents CoreGui nil crash on cold start (v0.5.0).
     - Auto Bad Aura farm added (v0.5.1).
+    - Combat tab restored with Anti-Aim, Kill Aura, Fast Hits (v0.5.2).
+    - Bad Aura filter fixed: only targets NPCs with "bad" in name (v0.5.2).
 ]]
 
 -- Wait for game to fully load before initializing
@@ -81,7 +83,7 @@ local function getGlobal(name)
 end
 
 local BloodyBlox = {
-    Version = "0.5.1",
+    Version = "0.5.2",
     MenuOpen = true,
     Player = LocalPlayer,
     Connections = {},
@@ -114,6 +116,10 @@ local BloodyBlox = {
         CombatInterval = 0.25,
         BadAuraFarm = false,
         BadAuraInterval = 0.1,
+        AntiAim = false,
+        KillAura = false,
+        KillAuraRadius = 20,
+        FastHits = false,
     },
     State = {
         LogContainer = nil,
@@ -436,7 +442,6 @@ function Analyzer:InstallHook()
 
                     BloodyBlox.State.LastCapture = snapshot
 
-                    -- Log only if Remote Spy is enabled OR if we're capturing a specific action
                     local action = BloodyBlox.State.CapturingAction
                     if BloodyBlox.Settings.RemoteSpyEnabled or action then
                         BloodyBlox:Log(
@@ -628,14 +633,14 @@ function Farm:StartBadAura()
                 local myRoot = BloodyBlox:GetHRP()
                 if not myRoot then return end
 
-                -- Find closest Bad Aura NPC
                 local closest = nil
                 local closestDist = math.huge
 
                 for _, object in ipairs(Workspace:GetDescendants()) do
                     if object:IsA("Model") and object:FindFirstChild("Humanoid") and object:FindFirstChild("HumanoidRootPart") then
                         local name = object.Name:lower()
-                        if name:find("bad") or name:find("aura") or name:find("enemy") or name:find("npc") then
+                        -- FIXED: Only target NPCs with "bad" in name (not "angel", "enemy", etc.)
+                        if name:find("bad") then
                             local humanoid = object.Humanoid
                             local npcRoot = object.HumanoidRootPart
                             if humanoid.Health > 0 then
@@ -654,18 +659,15 @@ function Farm:StartBadAura()
                 local targetRoot = closest.HumanoidRootPart
                 if not targetRoot then return end
 
-                -- Teleport to NPC (3 studs in front)
                 local targetPos = targetRoot.Position + (targetRoot.CFrame.LookVector * 3)
                 myRoot.CFrame = CFrame.new(targetPos, targetRoot.Position)
 
-                -- Spam attack
                 if type(mouse1press) == "function" and type(mouse1release) == "function" then
                     mouse1press()
                     task.wait(0.01)
                     mouse1release()
                 end
 
-                -- Fire combat remotes
                 for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
                     if remote:IsA("RemoteEvent") then
                         local remoteName = remote.Name:lower()
@@ -682,8 +684,154 @@ function Farm:StartBadAura()
         end
     end)
 
-    BloodyBlox:Log("Farm", "Bad Aura farm started", "warn")
+    BloodyBlox:Log("Farm", "Bad Aura farm started (only 'bad' NPCs)", "warn")
     return true
+end
+
+--============================================================
+-- Combat
+--============================================================
+
+local Combat = {}
+
+function Combat:ToggleAntiAim(enabled)
+    BloodyBlox.Settings.AntiAim = enabled
+
+    if self.AntiAimConnection then
+        safeDisconnect(self.AntiAimConnection)
+        self.AntiAimConnection = nil
+    end
+
+    if not enabled then
+        return
+    end
+
+    self.AntiAimConnection = RunService.RenderStepped:Connect(function()
+        local root = BloodyBlox:GetHRP()
+        if root then
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(30), 0)
+        end
+    end)
+    BloodyBlox:AddConnection(self.AntiAimConnection)
+end
+
+function Combat:ToggleKillAura(enabled)
+    BloodyBlox.Settings.KillAura = enabled
+
+    if self.KillAuraConnection then
+        safeDisconnect(self.KillAuraConnection)
+        self.KillAuraConnection = nil
+    end
+
+    if not enabled then
+        return
+    end
+
+    self.KillAuraConnection = RunService.Heartbeat:Connect(function()
+        pcall(function()
+            local myRoot = BloodyBlox:GetHRP()
+            if not myRoot then return end
+
+            local radius = BloodyBlox.Settings.KillAuraRadius or 20
+
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    local character = player.Character
+                    local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+                    if targetRoot and humanoid and humanoid.Health > 0 then
+                        local dist = (myRoot.Position - targetRoot.Position).Magnitude
+                        if dist <= radius then
+                            if type(mouse1press) == "function" and type(mouse1release) == "function" then
+                                mouse1press()
+                                task.wait(0.01)
+                                mouse1release()
+                            end
+
+                            for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
+                                if remote:IsA("RemoteEvent") then
+                                    local remoteName = remote.Name:lower()
+                                    if remoteName:find("punch") or remoteName:find("attack") or remoteName:find("hit") or remoteName:find("damage") then
+                                        pcall(function()
+                                            remote:FireServer(player)
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end)
+    BloodyBlox:AddConnection(self.KillAuraConnection)
+end
+
+function Combat:ToggleFastHits(enabled)
+    BloodyBlox.Settings.FastHits = enabled
+
+    if self.FastHitsConnection then
+        safeDisconnect(self.FastHitsConnection)
+        self.FastHitsConnection = nil
+    end
+
+    if not enabled then
+        return
+    end
+
+    self.FastHitsConnection = RunService.Heartbeat:Connect(function()
+        pcall(function()
+            local myRoot = BloodyBlox:GetHRP()
+            if not myRoot then return end
+
+            local closest = nil
+            local closestDist = math.huge
+
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    local character = player.Character
+                    local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+                    if targetRoot and humanoid and humanoid.Health > 0 then
+                        local dist = (myRoot.Position - targetRoot.Position).Magnitude
+                        if dist < closestDist then
+                            closest = player
+                            closestDist = dist
+                        end
+                    end
+                end
+            end
+
+            if not closest then return end
+
+            local targetCharacter = closest.Character
+            local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+            if not targetRoot then return end
+
+            local targetPos = targetRoot.Position + (targetRoot.CFrame.LookVector * 3)
+            myRoot.CFrame = CFrame.new(targetPos, targetRoot.Position)
+
+            if type(mouse1press) == "function" and type(mouse1release) == "function" then
+                mouse1press()
+                task.wait(0.01)
+                mouse1release()
+            end
+
+            for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
+                if remote:IsA("RemoteEvent") then
+                    local remoteName = remote.Name:lower()
+                    if remoteName:find("punch") or remoteName:find("attack") or remoteName:find("hit") or remoteName:find("damage") then
+                        pcall(function()
+                            remote:FireServer(closest)
+                        end)
+                    end
+                end
+            end
+        end)
+    end)
+    BloodyBlox:AddConnection(self.FastHitsConnection)
 end
 
 --============================================================
@@ -1779,6 +1927,20 @@ UI:AddNumberBox(FarmTab, "Bad Aura interval", 0.1, function(value)
     BloodyBlox.Settings.BadAuraInterval = math.max(0.05, value)
 end)
 
+local CombatTab = UI:AddTab("Combat")
+UI:AddToggle(CombatTab, "Anti-Aim", false, function(state)
+    Combat:ToggleAntiAim(state)
+end)
+UI:AddToggle(CombatTab, "Kill Aura", false, function(state)
+    Combat:ToggleKillAura(state)
+end)
+UI:AddNumberBox(CombatTab, "Kill Aura Radius", 20, function(value)
+    BloodyBlox.Settings.KillAuraRadius = math.max(5, value)
+end)
+UI:AddToggle(CombatTab, "Fast Hits", false, function(state)
+    Combat:ToggleFastHits(state)
+end)
+
 local AnalyzerTab = UI:AddTab("Analyzer")
 UI:AddToggle(AnalyzerTab, "Remote Spy (Log ALL remotes)", false, function(state)
     BloodyBlox.Settings.RemoteSpyEnabled = state
@@ -1916,7 +2078,7 @@ UI:AddButton(LogsTab, "Copy All", function()
             setclipboard(text)
         end)
         BloodyBlox:Log("Logs", "Copied to clipboard", "info")
-    else
+        else
         BloodyBlox:Log("Logs", "setclipboard unavailable", "error")
     end
 end)
@@ -1935,12 +2097,19 @@ UI:AddButton(SettingsTab, "Disable All", function()
     BloodyBlox.Settings.AutoRebirth = false
     BloodyBlox.Settings.CombatFarm = false
     BloodyBlox.Settings.BadAuraFarm = false
+    BloodyBlox.Settings.AntiAim = false
+    BloodyBlox.Settings.KillAura = false
+    BloodyBlox.Settings.FastHits = false
 
     Farm:Stop("Weight")
     Farm:Stop("Durability")
     Farm:Stop("Rebirth")
     Farm:Stop("Combat")
     Farm:Stop("BadAura")
+
+    Combat:ToggleAntiAim(false)
+    Combat:ToggleKillAura(false)
+    Combat:ToggleFastHits(false)
 
     ESP:Toggle(false)
     PlayerTools:ToggleFly(false)
@@ -1955,6 +2124,10 @@ UI:AddButton(SettingsTab, "EXIT", function()
     Farm:Stop("Rebirth")
     Farm:Stop("Combat")
     Farm:Stop("BadAura")
+
+    Combat:ToggleAntiAim(false)
+    Combat:ToggleKillAura(false)
+    Combat:ToggleFastHits(false)
 
     ESP:Toggle(false)
     PlayerTools:ToggleFly(false)
