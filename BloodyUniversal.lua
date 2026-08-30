@@ -132,7 +132,7 @@ end)
 -- FPS (silent fail)
 pcall(function() setfpscap(999) end)
 
--- Fly with heartbeat jitter
+-- Fly via CFrame (no BodyVelocity detection)
 local function fly_toggle(en)
     state.active.fly = en
 
@@ -141,18 +141,16 @@ local function fly_toggle(en)
         if not ch then return end
 
         local hr = ch:FindFirstChild("HumanoidRootPart")
-        if not hr then return end
+        local hm = ch:FindFirstChildOfClass("Humanoid")
+        if not hr or not hm then return end
 
-        local bv = Instance.new("BodyVelocity")
-        bv.Name = poly()
-        bv.MaxForce = Vector3.new(100000, 100000, 100000)
-        bv.Velocity = Vector3.zero
-        bv.Parent = hr
+        -- Store original state
+        state.fly_original_gravity = workspace.Gravity
 
         local tick = 0
-        state.conn.fly = svc[2].Heartbeat:Connect(function()
+        state.conn.fly = svc[2].Heartbeat:Connect(function(dt)
             tick = tick + 1
-            if tick % math.random(1, 2) ~= 0 then return end
+            if tick % 2 ~= 0 then return end
 
             if not state.active.fly then return end
 
@@ -163,48 +161,37 @@ local function fly_toggle(en)
             local h = c:FindFirstChildOfClass("Humanoid")
             if not r or not h then return end
 
-            local v = Vector3.zero
-            local sp = state.cfg.fly_speed
+            -- Disable gravity effect
+            local vel = r.AssemblyLinearVelocity
+            r.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
 
-            if svc[3]:IsKeyDown(Enum.KeyCode.W) then v = v + cam.CFrame.LookVector * sp end
-            if svc[3]:IsKeyDown(Enum.KeyCode.S) then v = v - cam.CFrame.LookVector * sp end
-            if svc[3]:IsKeyDown(Enum.KeyCode.A) then v = v - cam.CFrame.RightVector * sp end
-            if svc[3]:IsKeyDown(Enum.KeyCode.D) then v = v + cam.CFrame.RightVector * sp end
-            if svc[3]:IsKeyDown(Enum.KeyCode.Space) then v = v + Vector3.new(0, sp, 0) end
-            if svc[3]:IsKeyDown(Enum.KeyCode.LeftShift) then v = v - Vector3.new(0, sp, 0) end
+            -- Calculate movement
+            local move = Vector3.zero
+            local sp = state.cfg.fly_speed * 0.5
 
-            for _, b in ipairs(r:GetChildren()) do
-                if b:IsA("BodyVelocity") then
-                    b.Velocity = v * (50 + math.random(-3, 3))
-                end
+            if svc[3]:IsKeyDown(Enum.KeyCode.W) then move = move + cam.CFrame.LookVector end
+            if svc[3]:IsKeyDown(Enum.KeyCode.S) then move = move - cam.CFrame.LookVector end
+            if svc[3]:IsKeyDown(Enum.KeyCode.A) then move = move - cam.CFrame.RightVector end
+            if svc[3]:IsKeyDown(Enum.KeyCode.D) then move = move + cam.CFrame.RightVector end
+            if svc[3]:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
+            if svc[3]:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0, 1, 0) end
+
+            if move.Magnitude > 0 then
+                move = move.Unit
+                r.CFrame = r.CFrame + (move * sp)
             end
 
-            h.PlatformStand = true
+            -- Keep humanoid state
+            if h.Sit then
+                h.Sit = false
+            end
         end)
 
-        log("Fly ON", "MOD")
+        log("Fly ON (CFrame)", "MOD")
     else
         if state.conn.fly then
             state.conn.fly:Disconnect()
             state.conn.fly = nil
-        end
-
-        local ch = plr.Character
-        if ch then
-            local hr = ch:FindFirstChild("HumanoidRootPart")
-            local hm = ch:FindFirstChildOfClass("Humanoid")
-
-            if hr then
-                for _, b in ipairs(hr:GetChildren()) do
-                    if b:IsA("BodyVelocity") then
-                        b:Destroy()
-                    end
-                end
-            end
-
-            if hm then
-                hm.PlatformStand = false
-            end
         end
 
         log("Fly OFF", "MOD")
@@ -305,7 +292,7 @@ local function water_toggle(en)
     end
 end
 
--- Speed with minimal hooks
+-- Speed without hooks (direct WalkSpeed override)
 local function speed_toggle(en)
     state.active.speed = en
 
@@ -316,27 +303,6 @@ local function speed_toggle(en)
         local hm = ch:FindFirstChildOfClass("Humanoid")
         if not hm then return end
 
-        local sp = state.cfg.walk_speed
-
-        -- Minimalist hook
-        local old_index
-        old_index = hookmetamethod(game, "__index", newcclosure(function(t, k)
-            if t == hm and k == "WalkSpeed" and state.active.speed then
-                return sp
-            end
-            return old_index(t, k)
-        end))
-
-        local old_newindex
-        old_newindex = hookmetamethod(game, "__newindex", newcclosure(function(t, k, v)
-            if t == hm and k == "WalkSpeed" and state.active.speed then
-                return
-            end
-            return old_newindex(t, k, v)
-        end))
-
-        hm.WalkSpeed = sp
-
         state.conn.speed = svc[2].Heartbeat:Connect(function()
             if not state.active.speed then return end
 
@@ -344,12 +310,15 @@ local function speed_toggle(en)
             if not c then return end
 
             local h = c:FindFirstChildOfClass("Humanoid")
-            if h and h.WalkSpeed ~= sp then
-                h.WalkSpeed = sp
+            if h then
+                local sp = state.cfg.walk_speed
+                if h.WalkSpeed ~= sp then
+                    h.WalkSpeed = sp
+                end
             end
         end)
 
-        log("Speed ON", "MOD")
+        log("Speed ON (Direct)", "MOD")
     else
         if state.conn.speed then
             state.conn.speed:Disconnect()
