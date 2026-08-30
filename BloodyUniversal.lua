@@ -1,1111 +1,1082 @@
--- BloodyBlox Universal v1.0.0
--- Cross-game exploit framework (client-side only)
--- Author: BloodSecret
+-- BloodyBlox Universal v1.0.0 (Anti-Detection)
+-- Cross-game exploit framework with obfuscation
 -- Load: loadstring(game:HttpGet("https://raw.githubusercontent.com/BloodSecret/BloodBlox/main/BloodyUniversal.lua"))()
 
-local BloodyUniversal = {}
-BloodyUniversal.Version = "1.0.0"
-BloodyUniversal.Enabled = {}
-BloodyUniversal.Connections = {}
-BloodyUniversal.UI = {}
+local _G = {}
+_G.v = "1.0.0"
+_G.e = {}
+_G.c = {}
+_G.u = {}
+_G.l = {}
 
--- Services
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
-local StarterGui = game:GetService("StarterGui")
-local VirtualUser = game:GetService("VirtualUser")
+-- Obfuscated service access
+local s1 = game:GetService("Players")
+local s2 = game:GetService("RunService")
+local s3 = game:GetService("UserInputService")
+local s4 = game:GetService("Lighting")
+local s5 = game:GetService("StarterGui")
+local s6 = game:GetService("VirtualUser")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local p = s1.LocalPlayer
+local cam = workspace.CurrentCamera
 
--- Utility Functions
-local function Log(message, category)
-    category = category or "INFO"
-    local timestamp = os.date("%H:%M:%S")
-    local entry = string.format("[%s][%s] %s", timestamp, category, message)
-
-    if not BloodyUniversal.Logs then
-        BloodyUniversal.Logs = {}
+-- Randomized names generator
+local function rn()
+    local chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    local result = "_"
+    for i = 1, math.random(8, 12) do
+        local idx = math.random(1, #chars)
+        result = result .. chars:sub(idx, idx)
     end
-
-    table.insert(BloodyUniversal.Logs, 1, entry)
-
-    if #BloodyUniversal.Logs > 30 then
-        table.remove(BloodyUniversal.Logs, 31)
-    end
-
-    warn("[BloodyUniversal] " .. entry)
+    return result
 end
 
-local function SafeCleanup()
-    Log("Начало SafeCleanup", "CLEANUP")
+-- Logging (obfuscated)
+local function lg(m, c)
+    c = c or "INFO"
+    local t = os.date("%H:%M:%S")
+    local e = string.format("[%s][%s] %s", t, c, m)
 
-    -- Disconnect all connections
-    for name, connection in pairs(BloodyUniversal.Connections) do
-        if connection and typeof(connection) == "RBXScriptConnection" then
-            connection:Disconnect()
-            Log("Отключено: " .. name, "CLEANUP")
-        end
-    end
-    BloodyUniversal.Connections = {}
-
-    -- Disable all features
-    for feature, _ in pairs(BloodyUniversal.Enabled) do
-        BloodyUniversal.Enabled[feature] = false
+    if not _G.l then
+        _G.l = {}
     end
 
-    -- Restore character state
-    local character = LocalPlayer.Character
-    if character then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        local hrp = character:FindFirstChild("HumanoidRootPart")
+    table.insert(_G.l, 1, e)
 
-        -- Restore WalkSpeed
-        if humanoid then
-            humanoid.WalkSpeed = 16
+    if #_G.l > 30 then
+        table.remove(_G.l, 31)
+    end
+end
+
+-- Cleanup (obfuscated)
+local function clr()
+    lg("Cleanup start", "SYS")
+
+    for n, cn in pairs(_G.c) do
+        if cn and typeof(cn) == "RBXScriptConnection" then
+            pcall(function() cn:Disconnect() end)
+        end
+    end
+    _G.c = {}
+
+    for f, _ in pairs(_G.e) do
+        _G.e[f] = false
+    end
+
+    local ch = p.Character
+    if ch then
+        local hm = ch:FindFirstChildOfClass("Humanoid")
+        local hr = ch:FindFirstChild("HumanoidRootPart")
+
+        if hm then
+            hm.WalkSpeed = 16
         end
 
-        -- Remove BodyVelocity
-        if hrp then
-            local bodyVel = hrp:FindFirstChild("BloodyFly")
-            if bodyVel then
-                bodyVel:Destroy()
+        if hr then
+            for _, obj in ipairs(hr:GetChildren()) do
+                if obj:IsA("BodyVelocity") then
+                    obj:Destroy()
+                end
             end
         end
 
-        -- Restore CanCollide
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = true
+        for _, pt in ipairs(ch:GetDescendants()) do
+            if pt:IsA("BasePart") then
+                pt.CanCollide = true
             end
         end
 
-        -- Remove WalkOnWater platform
-        local platform = workspace:FindFirstChild("BloodyWaterPlatform")
-        if platform then
-            platform:Destroy()
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Part") and obj.Transparency == 1 and obj.Size == Vector3.new(10, 0.5, 10) then
+                obj:Destroy()
+            end
         end
     end
 
-    -- Restore Lighting
-    Lighting.Brightness = 1
-    Lighting.ClockTime = 14
-    Lighting.FogEnd = 100000
-    Lighting.GlobalShadows = true
-    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    s4.Brightness = 1
+    s4.ClockTime = 14
+    s4.FogEnd = 100000
+    s4.GlobalShadows = true
+    s4.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
 
-    -- Clear ESP
-    for _, drawing in ipairs(BloodyUniversal.ESPDrawings or {}) do
-        if drawing then
-            drawing:Remove()
+    for _, d in ipairs(_G.ed or {}) do
+        if d then
+            pcall(function() d:Remove() end)
         end
     end
-    BloodyUniversal.ESPDrawings = {}
+    _G.ed = {}
 
-    Log("SafeCleanup завершён", "CLEANUP")
+    lg("Cleanup done", "SYS")
 end
 
 -- Anti-AFK
-local function SetupAntiAFK()
-    LocalPlayer.Idled:Connect(function()
-        VirtualUser:ClickButton2(Vector2.new())
-        Log("Anti-AFK triggered", "AFK")
+local function aafk()
+    p.Idled:Connect(function()
+        task.wait(math.random(1, 3))
+        s6:ClickButton2(Vector2.new())
+        lg("AFK bypass", "SYS")
     end)
 end
 
 -- FPS Unlock
-setfpscap(999)
-Log("FPS unlocked (999)", "INIT")
+pcall(function()
+    setfpscap(999)
+    lg("FPS unlocked", "SYS")
+end)
 
--- Player Modifiers
-function BloodyUniversal.ToggleFly(enabled, speed)
-    BloodyUniversal.Enabled.Fly = enabled
-    speed = speed or 5
+-- Fly
+function _G.tfly(en, sp)
+    _G.e.fly = en
+    sp = sp or 5
 
-    if enabled then
-        local character = LocalPlayer.Character
-        if not character then return end
+    if en then
+        local ch = p.Character
+        if not ch then return end
 
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+        local hr = ch:FindFirstChild("HumanoidRootPart")
+        if not hr then return end
 
-        local bodyVel = hrp:FindFirstChild("BloodyFly") or Instance.new("BodyVelocity")
-        bodyVel.Name = "BloodyFly"
-        bodyVel.MaxForce = Vector3.new(100000, 100000, 100000)
-        bodyVel.Velocity = Vector3.new(0, 0, 0)
-        bodyVel.Parent = hrp
+        local bvn = rn()
+        local bv = hr:FindFirstChild(bvn) or Instance.new("BodyVelocity")
+        bv.Name = bvn
+        bv.MaxForce = Vector3.new(100000, 100000, 100000)
+        bv.Velocity = Vector3.new(0, 0, 0)
+        bv.Parent = hr
 
-        BloodyUniversal.Connections.FlyLoop = RunService.Heartbeat:Connect(function()
-            if not BloodyUniversal.Enabled.Fly then return end
+        _G.c.fly = s2.Heartbeat:Connect(function()
+            if not _G.e.fly then return end
 
-            local char = LocalPlayer.Character
-            if not char then return end
+            local c = p.Character
+            if not c then return end
 
-            local root = char:FindFirstChild("HumanoidRootPart")
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
-            if not root or not humanoid then return end
+            local r = c:FindFirstChild("HumanoidRootPart")
+            local h = c:FindFirstChildOfClass("Humanoid")
+            if not r or not h then return end
 
-            local velocity = Vector3.new(0, 0, 0)
+            local v = Vector3.new(0, 0, 0)
+            local m = 50 + math.random(-5, 5)
 
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                velocity = velocity + Camera.CFrame.LookVector * speed
+            if s3:IsKeyDown(Enum.KeyCode.W) then
+                v = v + cam.CFrame.LookVector * sp
             end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                velocity = velocity - Camera.CFrame.LookVector * speed
+            if s3:IsKeyDown(Enum.KeyCode.S) then
+                v = v - cam.CFrame.LookVector * sp
             end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                velocity = velocity - Camera.CFrame.RightVector * speed
+            if s3:IsKeyDown(Enum.KeyCode.A) then
+                v = v - cam.CFrame.RightVector * sp
             end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                velocity = velocity + Camera.CFrame.RightVector * speed
+            if s3:IsKeyDown(Enum.KeyCode.D) then
+                v = v + cam.CFrame.RightVector * sp
             end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                velocity = velocity + Vector3.new(0, speed, 0)
+            if s3:IsKeyDown(Enum.KeyCode.Space) then
+                v = v + Vector3.new(0, sp, 0)
             end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                velocity = velocity - Vector3.new(0, speed, 0)
-            end
-
-            local bv = root:FindFirstChild("BloodyFly")
-            if bv then
-                bv.Velocity = velocity * 50
+            if s3:IsKeyDown(Enum.KeyCode.LeftShift) then
+                v = v - Vector3.new(0, sp, 0)
             end
 
-            humanoid.PlatformStand = true
-        end)
-
-        Log("Fly включён (скорость: " .. speed .. ")", "PLAYER")
-    else
-        if BloodyUniversal.Connections.FlyLoop then
-            BloodyUniversal.Connections.FlyLoop:Disconnect()
-            BloodyUniversal.Connections.FlyLoop = nil
-        end
-
-        local character = LocalPlayer.Character
-        if character then
-            local hrp = character:FindFirstChild("HumanoidRootPart")
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-
-            if hrp then
-                local bodyVel = hrp:FindFirstChild("BloodyFly")
-                if bodyVel then
-                    bodyVel:Destroy()
+            for _, b in ipairs(r:GetChildren()) do
+                if b:IsA("BodyVelocity") then
+                    b.Velocity = v * m
                 end
             end
 
-            if humanoid then
-                humanoid.PlatformStand = false
+            h.PlatformStand = true
+        end)
+
+        lg("Fly ON (" .. sp .. ")", "PLR")
+    else
+        if _G.c.fly then
+            _G.c.fly:Disconnect()
+            _G.c.fly = nil
+        end
+
+        local ch = p.Character
+        if ch then
+            local hr = ch:FindFirstChild("HumanoidRootPart")
+            local hm = ch:FindFirstChildOfClass("Humanoid")
+
+            if hr then
+                for _, b in ipairs(hr:GetChildren()) do
+                    if b:IsA("BodyVelocity") then
+                        b:Destroy()
+                    end
+                end
+            end
+
+            if hm then
+                hm.PlatformStand = false
             end
         end
 
-        Log("Fly отключён", "PLAYER")
+        lg("Fly OFF", "PLR")
     end
 end
 
-function BloodyUniversal.ToggleNoclip(enabled)
-    BloodyUniversal.Enabled.Noclip = enabled
+-- Noclip
+function _G.tnc(en)
+    _G.e.nc = en
 
-    if enabled then
-        BloodyUniversal.Connections.NoclipLoop = RunService.Stepped:Connect(function()
-            if not BloodyUniversal.Enabled.Noclip then return end
+    if en then
+        local tk = 0
+        _G.c.nc = s2.Stepped:Connect(function()
+            tk = tk + 1
+            if tk % math.random(1, 3) ~= 0 then return end
 
-            local character = LocalPlayer.Character
-            if not character then return end
+            if not _G.e.nc then return end
 
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
+            local ch = p.Character
+            if not ch then return end
+
+            for _, pt in ipairs(ch:GetDescendants()) do
+                if pt:IsA("BasePart") then
+                    pt.CanCollide = false
                 end
             end
         end)
 
-        Log("Noclip включён", "PLAYER")
+        lg("Noclip ON", "PLR")
     else
-        if BloodyUniversal.Connections.NoclipLoop then
-            BloodyUniversal.Connections.NoclipLoop:Disconnect()
-            BloodyUniversal.Connections.NoclipLoop = nil
+        if _G.c.nc then
+            _G.c.nc:Disconnect()
+            _G.c.nc = nil
         end
 
-        local character = LocalPlayer.Character
-        if character then
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
+        local ch = p.Character
+        if ch then
+            for _, pt in ipairs(ch:GetDescendants()) do
+                if pt:IsA("BasePart") then
+                    pt.CanCollide = true
                 end
             end
         end
 
-        Log("Noclip отключён", "PLAYER")
+        lg("Noclip OFF", "PLR")
     end
 end
 
-function BloodyUniversal.ToggleWalkOnWater(enabled)
-    BloodyUniversal.Enabled.WalkOnWater = enabled
+-- Walk On Water
+function _G.tww(en)
+    _G.e.ww = en
 
-    if enabled then
-        local platform = Instance.new("Part")
-        platform.Name = "BloodyWaterPlatform"
-        platform.Size = Vector3.new(10, 1, 10)
-        platform.Transparency = 0.5
-        platform.CanCollide = true
-        platform.Anchored = true
-        platform.Color = Color3.fromRGB(0, 150, 255)
-        platform.Parent = workspace
+    if en then
+        local pn = rn()
+        local pl = Instance.new("Part")
+        pl.Name = pn
+        pl.Size = Vector3.new(10, 0.5, 10)
+        pl.Transparency = 1
+        pl.CanCollide = true
+        pl.Anchored = true
+        pl.Parent = workspace
 
-        BloodyUniversal.Connections.WaterLoop = RunService.Heartbeat:Connect(function()
-            if not BloodyUniversal.Enabled.WalkOnWater then return end
+        _G.c.ww = s2.Heartbeat:Connect(function()
+            if not _G.e.ww then return end
 
-            local character = LocalPlayer.Character
-            if not character then return end
+            local ch = p.Character
+            if not ch then return end
 
-            local hrp = character:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
+            local hr = ch:FindFirstChild("HumanoidRootPart")
+            if not hr then return end
 
-            local plat = workspace:FindFirstChild("BloodyWaterPlatform")
-            if plat then
-                local waterLevel = workspace.Terrain:WorldToCell(hrp.Position).Y * 4
-                plat.Position = Vector3.new(hrp.Position.X, waterLevel - 3, hrp.Position.Z)
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if obj:IsA("Part") and obj.Transparency == 1 and obj.Size == Vector3.new(10, 0.5, 10) then
+                    local wl = workspace.Terrain:WorldToCell(hr.Position).Y * 4
+                    obj.Position = Vector3.new(hr.Position.X, wl - 3, hr.Position.Z)
+                    break
+                end
             end
         end)
 
-        Log("Walk On Water включён", "PLAYER")
+        lg("Water Walk ON", "PLR")
     else
-        if BloodyUniversal.Connections.WaterLoop then
-            BloodyUniversal.Connections.WaterLoop:Disconnect()
-            BloodyUniversal.Connections.WaterLoop = nil
+        if _G.c.ww then
+            _G.c.ww:Disconnect()
+            _G.c.ww = nil
         end
 
-        local platform = workspace:FindFirstChild("BloodyWaterPlatform")
-        if platform then
-            platform:Destroy()
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Part") and obj.Transparency == 1 and obj.Size == Vector3.new(10, 0.5, 10) then
+                obj:Destroy()
+            end
         end
 
-        Log("Walk On Water отключён", "PLAYER")
+        lg("Water Walk OFF", "PLR")
     end
 end
 
-function BloodyUniversal.ToggleSpeed(enabled, speed)
-    BloodyUniversal.Enabled.Speed = enabled
-    speed = speed or 50
+-- Speed
+function _G.tsp(en, sp)
+    _G.e.sp = en
+    sp = sp or 50
 
-    if enabled then
-        local character = LocalPlayer.Character
-        if not character then return end
+    if en then
+        local ch = p.Character
+        if not ch then return end
 
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
+        local hm = ch:FindFirstChildOfClass("Humanoid")
+        if not hm then return end
 
-        humanoid.WalkSpeed = speed
+        local oi
+        oi = hookmetamethod(game, "__index", function(s, k)
+            if s == hm and k == "WalkSpeed" and _G.e.sp then
+                return sp
+            end
+            return oi(s, k)
+        end)
 
-        BloodyUniversal.Connections.SpeedLoop = RunService.Heartbeat:Connect(function()
-            if not BloodyUniversal.Enabled.Speed then return end
+        local oni
+        oni = hookmetamethod(game, "__newindex", function(s, k, v)
+            if s == hm and k == "WalkSpeed" and _G.e.sp then
+                return
+            end
+            return oni(s, k, v)
+        end)
 
-            local char = LocalPlayer.Character
-            if not char then return end
+        hm.WalkSpeed = sp
 
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.WalkSpeed ~= speed then
-                hum.WalkSpeed = speed
+        _G.c.sp = s2.Heartbeat:Connect(function()
+            if not _G.e.sp then return end
+
+            local c = p.Character
+            if not c then return end
+
+            local h = c:FindFirstChildOfClass("Humanoid")
+            if h and h.WalkSpeed ~= sp then
+                h.WalkSpeed = sp
             end
         end)
 
-        Log("Speed включён (" .. speed .. ")", "PLAYER")
+        lg("Speed ON (" .. sp .. ")", "PLR")
     else
-        if BloodyUniversal.Connections.SpeedLoop then
-            BloodyUniversal.Connections.SpeedLoop:Disconnect()
-            BloodyUniversal.Connections.SpeedLoop = nil
+        if _G.c.sp then
+            _G.c.sp:Disconnect()
+            _G.c.sp = nil
         end
 
-        local character = LocalPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid.WalkSpeed = 16
+        local ch = p.Character
+        if ch then
+            local hm = ch:FindFirstChildOfClass("Humanoid")
+            if hm then
+                hm.WalkSpeed = 16
             end
         end
 
-        Log("Speed отключён", "PLAYER")
+        lg("Speed OFF", "PLR")
     end
 end
 
--- Visual
-BloodyUniversal.ESPSettings = {
-    Enabled = false,
-    Boxes = true,
-    Names = true,
-    Distance = true,
-    HealthBars = true,
-    Tracers = false,
-    TeamCheck = false
+-- ESP
+_G.esp = {
+    en = false,
+    bx = true,
+    nm = true,
+    ds = true,
+    hp = true,
+    tr = false,
+    tm = false
 }
 
-BloodyUniversal.ESPDrawings = {}
+_G.ed = {}
 
-function BloodyUniversal.ToggleESP(enabled)
-    BloodyUniversal.ESPSettings.Enabled = enabled
+function _G.tesp(en)
+    _G.esp.en = en
 
-    if enabled then
-        BloodyUniversal.Connections.ESPLoop = RunService.RenderStepped:Connect(function()
-            if not BloodyUniversal.ESPSettings.Enabled then return end
+    if en then
+        _G.c.esp = s2.RenderStepped:Connect(function()
+            if not _G.esp.en then return end
 
-            -- Clear old drawings
-            for _, drawing in ipairs(BloodyUniversal.ESPDrawings) do
-                drawing:Remove()
+            for _, d in ipairs(_G.ed) do
+                d:Remove()
             end
-            BloodyUniversal.ESPDrawings = {}
+            _G.ed = {}
 
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player == LocalPlayer then continue end
+            for _, pl in ipairs(s1:GetPlayers()) do
+                if pl == p then continue end
 
-                if BloodyUniversal.ESPSettings.TeamCheck and player.Team == LocalPlayer.Team then
+                if _G.esp.tm and pl.Team == p.Team then
                     continue
                 end
 
-                local character = player.Character
-                if not character then continue end
+                local ch = pl.Character
+                if not ch then continue end
 
-                local hrp = character:FindFirstChild("HumanoidRootPart")
-                local humanoid = character:FindFirstChildOfClass("Humanoid")
-                if not hrp or not humanoid then continue end
+                local hr = ch:FindFirstChild("HumanoidRootPart")
+                local hm = ch:FindFirstChildOfClass("Humanoid")
+                if not hr or not hm then continue end
 
-                local vector, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                local vc, vs = cam:WorldToViewportPoint(hr.Position)
 
-                if onScreen then
-                    -- Box
-                    if BloodyUniversal.ESPSettings.Boxes then
-                        local box = Drawing.new("Square")
-                        box.Visible = true
-                        box.Color = Color3.new(1, 1, 1)
-                        box.Thickness = 2
-                        box.Transparency = 1
-                        box.Filled = false
+                if vs then
+                    if _G.esp.bx then
+                        local bx = Drawing.new("Square")
+                        bx.Visible = true
+                        bx.Color = Color3.new(1, 1, 1)
+                        bx.Thickness = 2
+                        bx.Transparency = 1
+                        bx.Filled = false
 
-                        local headPos = character:FindFirstChild("Head") and character.Head.Position or hrp.Position
-                        local legPos = hrp.Position - Vector3.new(0, 3, 0)
+                        local hp = ch:FindFirstChild("Head") and ch.Head.Position or hr.Position
+                        local lp = hr.Position - Vector3.new(0, 3, 0)
 
-                        local topVector = Camera:WorldToViewportPoint(headPos + Vector3.new(0, 0.5, 0))
-                        local bottomVector = Camera:WorldToViewportPoint(legPos)
+                        local tv = cam:WorldToViewportPoint(hp + Vector3.new(0, 0.5, 0))
+                        local bv = cam:WorldToViewportPoint(lp)
 
-                        local height = math.abs(topVector.Y - bottomVector.Y)
-                        local width = height / 2
+                        local h = math.abs(tv.Y - bv.Y)
+                        local w = h / 2
 
-                        box.Size = Vector2.new(width, height)
-                        box.Position = Vector2.new(vector.X - width / 2, vector.Y - height / 2)
+                        bx.Size = Vector2.new(w, h)
+                        bx.Position = Vector2.new(vc.X - w / 2, vc.Y - h / 2)
 
-                        table.insert(BloodyUniversal.ESPDrawings, box)
+                        table.insert(_G.ed, bx)
                     end
 
-                    -- Name
-                    if BloodyUniversal.ESPSettings.Names then
-                        local nameText = Drawing.new("Text")
-                        nameText.Visible = true
-                        nameText.Color = Color3.new(1, 1, 1)
-                        nameText.Text = player.Name
-                        nameText.Size = 16
-                        nameText.Center = true
-                        nameText.Outline = true
-                        nameText.Position = Vector2.new(vector.X, vector.Y - 30)
+                    if _G.esp.nm then
+                        local tx = Drawing.new("Text")
+                        tx.Visible = true
+                        tx.Color = Color3.new(1, 1, 1)
+                        tx.Text = pl.Name
+                        tx.Size = 16
+                        tx.Center = true
+                        tx.Outline = true
+                        tx.Position = Vector2.new(vc.X, vc.Y - 30)
 
-                        table.insert(BloodyUniversal.ESPDrawings, nameText)
+                        table.insert(_G.ed, tx)
                     end
 
-                    -- Distance
-                    if BloodyUniversal.ESPSettings.Distance then
-                        local distance = (hrp.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-                        local distText = Drawing.new("Text")
-                        distText.Visible = true
-                        distText.Color = Color3.new(1, 1, 1)
-                        distText.Text = string.format("[%.0f studs]", distance)
-                        distText.Size = 14
-                        distText.Center = true
-                        distText.Outline = true
-                        distText.Position = Vector2.new(vector.X, vector.Y + 30)
+                    if _G.esp.ds then
+                        local dt = (hr.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                        local dx = Drawing.new("Text")
+                        dx.Visible = true
+                        dx.Color = Color3.new(1, 1, 1)
+                        dx.Text = string.format("[%.0f]", dt)
+                        dx.Size = 14
+                        dx.Center = true
+                        dx.Outline = true
+                        dx.Position = Vector2.new(vc.X, vc.Y + 30)
 
-                        table.insert(BloodyUniversal.ESPDrawings, distText)
+                        table.insert(_G.ed, dx)
                     end
 
-                    -- Health Bar
-                    if BloodyUniversal.ESPSettings.HealthBars then
-                        local healthPct = humanoid.Health / humanoid.MaxHealth
+                    if _G.esp.hp then
+                        local hp = hm.Health / hm.MaxHealth
 
-                        local healthBarBg = Drawing.new("Square")
-                        healthBarBg.Visible = true
-                        healthBarBg.Color = Color3.new(0, 0, 0)
-                        healthBarBg.Thickness = 1
-                        healthBarBg.Transparency = 0.5
-                        healthBarBg.Filled = true
-                        healthBarBg.Size = Vector2.new(50, 6)
-                        healthBarBg.Position = Vector2.new(vector.X - 25, vector.Y + 15)
+                        local bg = Drawing.new("Square")
+                        bg.Visible = true
+                        bg.Color = Color3.new(0, 0, 0)
+                        bg.Thickness = 1
+                        bg.Transparency = 0.5
+                        bg.Filled = true
+                        bg.Size = Vector2.new(50, 6)
+                        bg.Position = Vector2.new(vc.X - 25, vc.Y + 15)
 
-                        local healthBarFg = Drawing.new("Square")
-                        healthBarFg.Visible = true
-                        healthBarFg.Color = Color3.fromRGB(0, 255, 0)
-                        healthBarFg.Thickness = 1
-                        healthBarFg.Transparency = 1
-                        healthBarFg.Filled = true
-                        healthBarFg.Size = Vector2.new(50 * healthPct, 6)
-                        healthBarFg.Position = Vector2.new(vector.X - 25, vector.Y + 15)
+                        local fg = Drawing.new("Square")
+                        fg.Visible = true
+                        fg.Color = Color3.fromRGB(0, 255, 0)
+                        fg.Thickness = 1
+                        fg.Transparency = 1
+                        fg.Filled = true
+                        fg.Size = Vector2.new(50 * hp, 6)
+                        fg.Position = Vector2.new(vc.X - 25, vc.Y + 15)
 
-                        table.insert(BloodyUniversal.ESPDrawings, healthBarBg)
-                        table.insert(BloodyUniversal.ESPDrawings, healthBarFg)
+                        table.insert(_G.ed, bg)
+                        table.insert(_G.ed, fg)
                     end
 
-                    -- Tracers
-                    if BloodyUniversal.ESPSettings.Tracers then
-                        local tracer = Drawing.new("Line")
-                        tracer.Visible = true
-                        tracer.Color = Color3.new(1, 1, 1)
-                        tracer.Thickness = 1
-                        tracer.Transparency = 1
-                        tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                        tracer.To = Vector2.new(vector.X, vector.Y)
+                    if _G.esp.tr then
+                        local tr = Drawing.new("Line")
+                        tr.Visible = true
+                        tr.Color = Color3.new(1, 1, 1)
+                        tr.Thickness = 1
+                        tr.Transparency = 1
+                        tr.From = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+                        tr.To = Vector2.new(vc.X, vc.Y)
 
-                        table.insert(BloodyUniversal.ESPDrawings, tracer)
+                        table.insert(_G.ed, tr)
                     end
                 end
             end
         end)
 
-        Log("ESP включён", "VISUAL")
+        lg("ESP ON", "VIS")
     else
-        if BloodyUniversal.Connections.ESPLoop then
-            BloodyUniversal.Connections.ESPLoop:Disconnect()
-            BloodyUniversal.Connections.ESPLoop = nil
+        if _G.c.esp then
+            _G.c.esp:Disconnect()
+            _G.c.esp = nil
         end
 
-        for _, drawing in ipairs(BloodyUniversal.ESPDrawings) do
-            drawing:Remove()
+        for _, d in ipairs(_G.ed) do
+            d:Remove()
         end
-        BloodyUniversal.ESPDrawings = {}
+        _G.ed = {}
 
-        Log("ESP отключён", "VISUAL")
+        lg("ESP OFF", "VIS")
     end
 end
 
-function BloodyUniversal.ToggleFullbright(enabled)
-    BloodyUniversal.Enabled.Fullbright = enabled
+-- Fullbright
+function _G.tfb(en)
+    _G.e.fb = en
 
-    if enabled then
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 1000000
-        Lighting.GlobalShadows = false
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+    if en then
+        s4.Brightness = 2
+        s4.ClockTime = 14
+        s4.FogEnd = 1000000
+        s4.GlobalShadows = false
+        s4.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
 
-        Log("Fullbright включён", "VISUAL")
+        lg("Fullbright ON", "VIS")
     else
-        Lighting.Brightness = 1
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
-        Lighting.GlobalShadows = true
-        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        s4.Brightness = 1
+        s4.ClockTime = 14
+        s4.FogEnd = 100000
+        s4.GlobalShadows = true
+        s4.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
 
-        Log("Fullbright отключён", "VISUAL")
+        lg("Fullbright OFF", "VIS")
     end
 end
 
--- Combat
-function BloodyUniversal.ToggleAntiAim(enabled)
-    BloodyUniversal.Enabled.AntiAim = enabled
+-- Anti-Aim
+function _G.taa(en)
+    _G.e.aa = en
 
-    if enabled then
-        BloodyUniversal.Connections.AntiAimLoop = RunService.RenderStepped:Connect(function()
-            if not BloodyUniversal.Enabled.AntiAim then return end
+    if en then
+        local ag = 0
+        _G.c.aa = s2.RenderStepped:Connect(function()
+            if not _G.e.aa then return end
 
-            local character = LocalPlayer.Character
-            if not character then return end
+            local ch = p.Character
+            if not ch then return end
 
-            local hrp = character:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
+            local hr = ch:FindFirstChild("HumanoidRootPart")
+            if not hr then return end
 
-            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(180), 0)
+            ag = ag + math.random(150, 210)
+            hr.CFrame = hr.CFrame * CFrame.Angles(0, math.rad(ag), 0)
         end)
 
-        Log("Anti-Aim включён", "COMBAT")
+        lg("Anti-Aim ON", "CMB")
     else
-        if BloodyUniversal.Connections.AntiAimLoop then
-            BloodyUniversal.Connections.AntiAimLoop:Disconnect()
-            BloodyUniversal.Connections.AntiAimLoop = nil
+        if _G.c.aa then
+            _G.c.aa:Disconnect()
+            _G.c.aa = nil
         end
 
-        Log("Anti-Aim отключён", "COMBAT")
-    end
-end
-
--- Config System
-BloodyUniversal.ConfigPath = "BloodyUniversal_Configs/"
-
-function BloodyUniversal.SaveConfig(configName)
-    local config = {
-        Version = BloodyUniversal.Version,
-        Enabled = BloodyUniversal.Enabled,
-        ESPSettings = BloodyUniversal.ESPSettings
-    }
-
-    local success, err = pcall(function()
-        local json = game:GetService("HttpService"):JSONEncode(config)
-        writefile(BloodyUniversal.ConfigPath .. configName .. ".json", json)
-    end)
-
-    if success then
-        Log("Конфиг сохранён: " .. configName, "CONFIG")
-        return true
-    else
-        Log("Ошибка сохранения: " .. tostring(err), "CONFIG")
-        return false
-    end
-end
-
-function BloodyUniversal.LoadConfig(configName)
-    local success, result = pcall(function()
-        local json = readfile(BloodyUniversal.ConfigPath .. configName .. ".json")
-        return game:GetService("HttpService"):JSONDecode(json)
-    end)
-
-    if success then
-        BloodyUniversal.Enabled = result.Enabled or {}
-        BloodyUniversal.ESPSettings = result.ESPSettings or BloodyUniversal.ESPSettings
-
-        Log("Конфиг загружен: " .. configName, "CONFIG")
-        return true
-    else
-        Log("Ошибка загрузки: " .. tostring(result), "CONFIG")
-        return false
+        lg("Anti-Aim OFF", "CMB")
     end
 end
 
 -- UI System
-local function CreateUI()
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "BloodyUniversalUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local function cui()
+    local sg = Instance.new("ScreenGui")
+    sg.Name = rn()
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-    -- Check for background image
-    local bgImagePath = "C:\\Roblox\\background.png"
-    local hasCustomBg = isfile and isfile(bgImagePath)
+    local mf = Instance.new("Frame")
+    mf.Name = rn()
+    mf.Size = UDim2.new(0, 600, 0, 450)
+    mf.Position = UDim2.new(0.5, -300, 0.5, -225)
+    mf.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    mf.BackgroundTransparency = 0.25
+    mf.BorderSizePixel = 0
+    mf.Active = true
+    mf.Draggable = true
+    mf.Parent = sg
 
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 600, 0, 450)
-    mainFrame.Position = UDim2.new(0.5, -300, 0.5, -225)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-    mainFrame.BackgroundTransparency = 0.25
-    mainFrame.BorderSizePixel = 0
-    mainFrame.Active = true
-    mainFrame.Draggable = true
-    mainFrame.Parent = screenGui
+    local co = Instance.new("UICorner")
+    co.CornerRadius = UDim.new(0, 12)
+    co.Parent = mf
 
-    -- Background image (if exists)
-    if hasCustomBg then
-        local bgImage = Instance.new("ImageLabel")
-        bgImage.Name = "BackgroundImage"
-        bgImage.Size = UDim2.new(1, 0, 1, 0)
-        bgImage.Position = UDim2.new(0, 0, 0, 0)
-        bgImage.BackgroundTransparency = 1
-        bgImage.Image = getcustomasset(bgImagePath)
-        bgImage.ImageTransparency = 0.7
-        bgImage.ScaleType = Enum.ScaleType.Crop
-        bgImage.ZIndex = 1
-        bgImage.Parent = mainFrame
-    end
+    local hd = Instance.new("Frame")
+    hd.Name = rn()
+    hd.Size = UDim2.new(1, 0, 0, 40)
+    hd.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    hd.BackgroundTransparency = 0.3
+    hd.BorderSizePixel = 0
+    hd.ZIndex = 2
+    hd.Parent = mf
 
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 12)
-    uiCorner.Parent = mainFrame
+    local hc = Instance.new("UICorner")
+    hc.CornerRadius = UDim.new(0, 12)
+    hc.Parent = hd
 
-    -- Header
-    local header = Instance.new("Frame")
-    header.Name = "Header"
-    header.Size = UDim2.new(1, 0, 0, 40)
-    header.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-    header.BackgroundTransparency = 0.3
-    header.BorderSizePixel = 0
-    header.ZIndex = 2
-    header.Parent = mainFrame
+    local tt = Instance.new("TextLabel")
+    tt.Size = UDim2.new(0.7, 0, 1, 0)
+    tt.Position = UDim2.new(0, 15, 0, 0)
+    tt.BackgroundTransparency = 1
+    tt.Text = "Universal " .. _G.v
+    tt.TextColor3 = Color3.fromRGB(255, 50, 50)
+    tt.TextSize = 18
+    tt.Font = Enum.Font.GothamBold
+    tt.TextXAlignment = Enum.TextXAlignment.Left
+    tt.ZIndex = 3
+    tt.Parent = hd
 
-    local headerCorner = Instance.new("UICorner")
-    headerCorner.CornerRadius = UDim.new(0, 12)
-    headerCorner.Parent = header
+    local cb = Instance.new("TextButton")
+    cb.Size = UDim2.new(0, 30, 0, 30)
+    cb.Position = UDim2.new(1, -40, 0, 5)
+    cb.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    cb.Text = "X"
+    cb.TextColor3 = Color3.new(1, 1, 1)
+    cb.TextSize = 16
+    cb.Font = Enum.Font.GothamBold
+    cb.ZIndex = 3
+    cb.Parent = hd
 
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(0.7, 0, 1, 0)
-    title.Position = UDim2.new(0, 15, 0, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "BloodyBlox Universal v" .. BloodyUniversal.Version
-    title.TextColor3 = Color3.fromRGB(255, 50, 50)
-    title.TextSize = 18
-    title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.ZIndex = 3
-    title.Parent = header
+    local cc = Instance.new("UICorner")
+    cc.CornerRadius = UDim.new(0, 6)
+    cc.Parent = cb
 
-    -- Close button
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "CloseButton"
-    closeBtn.Size = UDim2.new(0, 30, 0, 30)
-    closeBtn.Position = UDim2.new(1, -40, 0, 5)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-    closeBtn.Text = "X"
-    closeBtn.TextColor3 = Color3.new(1, 1, 1)
-    closeBtn.TextSize = 16
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.ZIndex = 3
-    closeBtn.Parent = header
-
-    local closeBtnCorner = Instance.new("UICorner")
-    closeBtnCorner.CornerRadius = UDim.new(0, 6)
-    closeBtnCorner.Parent = closeBtn
-
-    closeBtn.MouseButton1Click:Connect(function()
-        mainFrame.Visible = false
-        Log("UI скрыто", "UI")
+    cb.MouseButton1Click:Connect(function()
+        mf.Visible = false
+        lg("UI hidden", "UI")
     end)
 
-    -- Tab container
-    local tabContainer = Instance.new("ScrollingFrame")
-    tabContainer.Name = "TabContainer"
-    tabContainer.Size = UDim2.new(1, -20, 1, -60)
-    tabContainer.Position = UDim2.new(0, 10, 0, 50)
-    tabContainer.BackgroundTransparency = 1
-    tabContainer.ScrollBarThickness = 6
-    tabContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
-    tabContainer.ZIndex = 2
-    tabContainer.Parent = mainFrame
+    local tb = Instance.new("ScrollingFrame")
+    tb.Name = rn()
+    tb.Size = UDim2.new(1, -20, 1, -60)
+    tb.Position = UDim2.new(0, 10, 0, 50)
+    tb.BackgroundTransparency = 1
+    tb.ScrollBarThickness = 6
+    tb.CanvasSize = UDim2.new(0, 0, 0, 0)
+    tb.ZIndex = 2
+    tb.Parent = mf
 
-    local tabLayout = Instance.new("UIListLayout")
-    tabLayout.Padding = UDim.new(0, 10)
-    tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    tabLayout.Parent = tabContainer
+    local ly = Instance.new("UIListLayout")
+    ly.Padding = UDim.new(0, 10)
+    ly.SortOrder = Enum.SortOrder.LayoutOrder
+    ly.Parent = tb
 
-    -- Auto-resize canvas
-    tabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        tabContainer.CanvasSize = UDim2.new(0, 0, 0, tabLayout.AbsoluteContentSize.Y + 10)
+    ly:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        tb.CanvasSize = UDim2.new(0, 0, 0, ly.AbsoluteContentSize.Y + 10)
     end)
 
-    BloodyUniversal.UI.ScreenGui = screenGui
-    BloodyUniversal.UI.MainFrame = mainFrame
-    BloodyUniversal.UI.TabContainer = tabContainer
+    _G.u.sg = sg
+    _G.u.mf = mf
+    _G.u.tb = tb
 
-    return screenGui
+    return sg
 end
 
-local function CreateToggle(parent, text, callback)
-    local toggleFrame = Instance.new("Frame")
-    toggleFrame.Size = UDim2.new(1, -10, 0, 35)
-    toggleFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-    toggleFrame.BackgroundTransparency = 0.4
-    toggleFrame.BorderSizePixel = 0
-    toggleFrame.ZIndex = 3
-    toggleFrame.Parent = parent
+local function ctg(pr, tx, cb)
+    local tf = Instance.new("Frame")
+    tf.Size = UDim2.new(1, -10, 0, 35)
+    tf.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+    tf.BackgroundTransparency = 0.4
+    tf.BorderSizePixel = 0
+    tf.ZIndex = 3
+    tf.Parent = pr
 
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 6)
-    toggleCorner.Parent = toggleFrame
+    local tc = Instance.new("UICorner")
+    tc.CornerRadius = UDim.new(0, 6)
+    tc.Parent = tf
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.7, 0, 1, 0)
-    label.Position = UDim2.new(0, 10, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.new(1, 1, 1)
-    label.TextSize = 14
-    label.Font = Enum.Font.Gotham
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.ZIndex = 4
-    label.Parent = toggleFrame
+    local lb = Instance.new("TextLabel")
+    lb.Size = UDim2.new(0.7, 0, 1, 0)
+    lb.Position = UDim2.new(0, 10, 0, 0)
+    lb.BackgroundTransparency = 1
+    lb.Text = tx
+    lb.TextColor3 = Color3.new(1, 1, 1)
+    lb.TextSize = 14
+    lb.Font = Enum.Font.Gotham
+    lb.TextXAlignment = Enum.TextXAlignment.Left
+    lb.ZIndex = 4
+    lb.Parent = tf
 
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0, 60, 0, 25)
-    button.Position = UDim2.new(1, -70, 0.5, -12.5)
-    button.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-    button.Text = "OFF"
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.TextSize = 12
-    button.Font = Enum.Font.GothamBold
-    button.ZIndex = 4
-    button.Parent = toggleFrame
+    local bt = Instance.new("TextButton")
+    bt.Size = UDim2.new(0, 60, 0, 25)
+    bt.Position = UDim2.new(1, -70, 0.5, -12.5)
+    bt.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    bt.Text = "OFF"
+    bt.TextColor3 = Color3.new(1, 1, 1)
+    bt.TextSize = 12
+    bt.Font = Enum.Font.GothamBold
+    bt.ZIndex = 4
+    bt.Parent = tf
 
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 6)
-    buttonCorner.Parent = button
+    local bc = Instance.new("UICorner")
+    bc.CornerRadius = UDim.new(0, 6)
+    bc.Parent = bt
 
-    local enabled = false
-    button.MouseButton1Click:Connect(function()
-        enabled = not enabled
+    local en = false
+    bt.MouseButton1Click:Connect(function()
+        en = not en
 
-        if enabled then
-            button.Text = "ON"
-            button.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
+        if en then
+            bt.Text = "ON"
+            bt.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
         else
-            button.Text = "OFF"
-            button.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            bt.Text = "OFF"
+            bt.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
         end
 
-        if callback then
-            callback(enabled)
+        if cb then
+            cb(en)
         end
     end)
 
-    return toggleFrame, button
+    return tf, bt
 end
 
-local function CreateSlider(parent, text, min, max, default, callback)
-    local sliderFrame = Instance.new("Frame")
-    sliderFrame.Size = UDim2.new(1, -10, 0, 50)
-    sliderFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-    sliderFrame.BackgroundTransparency = 0.4
-    sliderFrame.BorderSizePixel = 0
-    sliderFrame.ZIndex = 3
-    sliderFrame.Parent = parent
+local function csl(pr, tx, mn, mx, df, cb)
+    local sf = Instance.new("Frame")
+    sf.Size = UDim2.new(1, -10, 0, 50)
+    sf.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+    sf.BackgroundTransparency = 0.4
+    sf.BorderSizePixel = 0
+    sf.ZIndex = 3
+    sf.Parent = pr
 
-    local sliderCorner = Instance.new("UICorner")
-    sliderCorner.CornerRadius = UDim.new(0, 6)
-    sliderCorner.Parent = sliderFrame
+    local sc = Instance.new("UICorner")
+    sc.CornerRadius = UDim.new(0, 6)
+    sc.Parent = sf
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -20, 0, 20)
-    label.Position = UDim2.new(0, 10, 0, 5)
-    label.BackgroundTransparency = 1
-    label.Text = text .. ": " .. default
-    label.TextColor3 = Color3.new(1, 1, 1)
-    label.TextSize = 14
-    label.Font = Enum.Font.Gotham
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.ZIndex = 4
-    label.Parent = sliderFrame
+    local lb = Instance.new("TextLabel")
+    lb.Size = UDim2.new(1, -20, 0, 20)
+    lb.Position = UDim2.new(0, 10, 0, 5)
+    lb.BackgroundTransparency = 1
+    lb.Text = tx .. ": " .. df
+    lb.TextColor3 = Color3.new(1, 1, 1)
+    lb.TextSize = 14
+    lb.Font = Enum.Font.Gotham
+    lb.TextXAlignment = Enum.TextXAlignment.Left
+    lb.ZIndex = 4
+    lb.Parent = sf
 
-    local slider = Instance.new("Frame")
-    slider.Size = UDim2.new(0.9, 0, 0, 8)
-    slider.Position = UDim2.new(0.05, 0, 1, -15)
-    slider.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-    slider.BorderSizePixel = 0
-    slider.ZIndex = 4
-    slider.Parent = sliderFrame
+    local sl = Instance.new("Frame")
+    sl.Size = UDim2.new(0.9, 0, 0, 8)
+    sl.Position = UDim2.new(0.05, 0, 1, -15)
+    sl.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    sl.BorderSizePixel = 0
+    sl.ZIndex = 4
+    sl.Parent = sf
 
-    local sliderBgCorner = Instance.new("UICorner")
-    sliderBgCorner.CornerRadius = UDim.new(1, 0)
-    sliderBgCorner.Parent = slider
+    local slc = Instance.new("UICorner")
+    slc.CornerRadius = UDim.new(1, 0)
+    slc.Parent = sl
 
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    sliderFill.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-    sliderFill.BorderSizePixel = 0
-    sliderFill.ZIndex = 5
-    sliderFill.Parent = slider
+    local fl = Instance.new("Frame")
+    fl.Size = UDim2.new((df - mn) / (mx - mn), 0, 1, 0)
+    fl.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    fl.BorderSizePixel = 0
+    fl.ZIndex = 5
+    fl.Parent = sl
 
-    local sliderFillCorner = Instance.new("UICorner")
-    sliderFillCorner.CornerRadius = UDim.new(1, 0)
-    sliderFillCorner.Parent = sliderFill
+    local fc = Instance.new("UICorner")
+    fc.CornerRadius = UDim.new(1, 0)
+    fc.Parent = fl
 
-    local dragging = false
-    local currentValue = default
+    local dr = false
+    local vl = df
 
-    local function updateSlider(input)
-        local relativeX = math.clamp((input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
-        currentValue = math.floor(min + (max - min) * relativeX)
+    local function upd(ip)
+        local rx = math.clamp((ip.Position.X - sl.AbsolutePosition.X) / sl.AbsoluteSize.X, 0, 1)
+        vl = math.floor(mn + (mx - mn) * rx)
 
-        sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
-        label.Text = text .. ": " .. currentValue
+        fl.Size = UDim2.new(rx, 0, 1, 0)
+        lb.Text = tx .. ": " .. vl
 
-        if callback then
-            callback(currentValue)
+        if cb then
+            cb(vl)
         end
     end
 
-    slider.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            updateSlider(input)
+    sl.InputBegan:Connect(function(ip)
+        if ip.UserInputType == Enum.UserInputType.MouseButton1 then
+            dr = true
+            upd(ip)
         end
     end)
 
-    slider.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
+    sl.InputEnded:Connect(function(ip)
+        if ip.UserInputType == Enum.UserInputType.MouseButton1 then
+            dr = false
         end
     end)
 
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            updateSlider(input)
+    s3.InputChanged:Connect(function(ip)
+        if dr and ip.UserInputType == Enum.UserInputType.MouseMovement then
+            upd(ip)
         end
     end)
 
-    return sliderFrame
+    return sf
 end
 
-local function CreateButton(parent, text, callback)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, -10, 0, 35)
-    button.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-    button.Text = text
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.TextSize = 14
-    button.Font = Enum.Font.GothamBold
-    button.ZIndex = 3
-    button.Parent = parent
+local function cbt(pr, tx, cb)
+    local bt = Instance.new("TextButton")
+    bt.Size = UDim2.new(1, -10, 0, 35)
+    bt.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    bt.Text = tx
+    bt.TextColor3 = Color3.new(1, 1, 1)
+    bt.TextSize = 14
+    bt.Font = Enum.Font.GothamBold
+    bt.ZIndex = 3
+    bt.Parent = pr
 
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 6)
-    buttonCorner.Parent = button
+    local bc = Instance.new("UICorner")
+    bc.CornerRadius = UDim.new(0, 6)
+    bc.Parent = bt
 
-    button.MouseButton1Click:Connect(function()
-        if callback then
-            callback()
+    bt.MouseButton1Click:Connect(function()
+        if cb then
+            cb()
         end
     end)
 
-    return button
+    return bt
 end
 
-local function CreateSection(parent, title)
-    local section = Instance.new("Frame")
-    section.Size = UDim2.new(1, 0, 0, 0)
-    section.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-    section.BackgroundTransparency = 0.3
-    section.BorderSizePixel = 0
-    section.ZIndex = 2
-    section.Parent = parent
+local function csc(pr, tt)
+    local sc = Instance.new("Frame")
+    sc.Size = UDim2.new(1, 0, 0, 0)
+    sc.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    sc.BackgroundTransparency = 0.3
+    sc.BorderSizePixel = 0
+    sc.ZIndex = 2
+    sc.Parent = pr
 
-    local sectionCorner = Instance.new("UICorner")
-    sectionCorner.CornerRadius = UDim.new(0, 8)
-    sectionCorner.Parent = section
+    local scc = Instance.new("UICorner")
+    scc.CornerRadius = UDim.new(0, 8)
+    scc.Parent = sc
 
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, -20, 0, 30)
-    titleLabel.Position = UDim2.new(0, 10, 0, 5)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = title
-    titleLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
-    titleLabel.TextSize = 16
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.ZIndex = 3
-    titleLabel.Parent = section
+    local tl = Instance.new("TextLabel")
+    tl.Size = UDim2.new(1, -20, 0, 30)
+    tl.Position = UDim2.new(0, 10, 0, 5)
+    tl.BackgroundTransparency = 1
+    tl.Text = tt
+    tl.TextColor3 = Color3.fromRGB(255, 50, 50)
+    tl.TextSize = 16
+    tl.Font = Enum.Font.GothamBold
+    tl.TextXAlignment = Enum.TextXAlignment.Left
+    tl.ZIndex = 3
+    tl.Parent = sc
 
-    local contentFrame = Instance.new("Frame")
-    contentFrame.Size = UDim2.new(1, -20, 1, -40)
-    contentFrame.Position = UDim2.new(0, 10, 0, 35)
-    contentFrame.BackgroundTransparency = 1
-    contentFrame.ZIndex = 3
-    contentFrame.Parent = section
+    local ct = Instance.new("Frame")
+    ct.Size = UDim2.new(1, -20, 1, -40)
+    ct.Position = UDim2.new(0, 10, 0, 35)
+    ct.BackgroundTransparency = 1
+    ct.ZIndex = 3
+    ct.Parent = sc
 
-    local contentLayout = Instance.new("UIListLayout")
-    contentLayout.Padding = UDim.new(0, 5)
-    contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    contentLayout.Parent = contentFrame
+    local cl = Instance.new("UIListLayout")
+    cl.Padding = UDim.new(0, 5)
+    cl.SortOrder = Enum.SortOrder.LayoutOrder
+    cl.Parent = ct
 
-    contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        section.Size = UDim2.new(1, 0, 0, contentLayout.AbsoluteContentSize.Y + 45)
+    cl:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        sc.Size = UDim2.new(1, 0, 0, cl.AbsoluteContentSize.Y + 45)
     end)
 
-    return section, contentFrame
+    return sc, ct
 end
 
 -- Build UI
-local function BuildUI()
-    local gui = CreateUI()
-    local container = BloodyUniversal.UI.TabContainer
+local function bld()
+    local gu = cui()
+    local cn = _G.u.tb
 
-    -- Player Section
-    local playerSection, playerContent = CreateSection(container, "🏃 Player")
+    -- Player
+    local ps, pc = csc(cn, "Player")
 
-    local flySpeed = 5
-    local _, flyToggle = CreateToggle(playerContent, "Fly", function(enabled)
-        BloodyUniversal.ToggleFly(enabled, flySpeed)
+    local fs = 5
+    ctg(pc, "Fly", function(en)
+        _G.tfly(en, fs)
     end)
 
-    CreateSlider(playerContent, "Fly Speed", 1, 10, 5, function(value)
-        flySpeed = value
-        if BloodyUniversal.Enabled.Fly then
-            BloodyUniversal.ToggleFly(true, flySpeed)
+    csl(pc, "Fly Speed", 1, 10, 5, function(v)
+        fs = v
+        if _G.e.fly then
+            _G.tfly(true, fs)
         end
     end)
 
-    CreateToggle(playerContent, "Noclip", function(enabled)
-        BloodyUniversal.ToggleNoclip(enabled)
+    ctg(pc, "Noclip", function(en)
+        _G.tnc(en)
     end)
 
-    CreateToggle(playerContent, "Walk On Water", function(enabled)
-        BloodyUniversal.ToggleWalkOnWater(enabled)
+    ctg(pc, "Walk On Water", function(en)
+        _G.tww(en)
     end)
 
-    local walkSpeed = 50
-    local _, speedToggle = CreateToggle(playerContent, "Speed", function(enabled)
-        BloodyUniversal.ToggleSpeed(enabled, walkSpeed)
+    local ws = 50
+    ctg(pc, "Speed", function(en)
+        _G.tsp(en, ws)
     end)
 
-    CreateSlider(playerContent, "Walk Speed", 16, 200, 50, function(value)
-        walkSpeed = value
-        if BloodyUniversal.Enabled.Speed then
-            BloodyUniversal.ToggleSpeed(true, walkSpeed)
+    csl(pc, "Walk Speed", 16, 200, 50, function(v)
+        ws = v
+        if _G.e.sp then
+            _G.tsp(true, ws)
         end
     end)
 
-    -- Visual Section
-    local visualSection, visualContent = CreateSection(container, "👁️ Visual")
+    -- Visual
+    local vs, vc = csc(cn, "Visual")
 
-    CreateToggle(visualContent, "ESP", function(enabled)
-        BloodyUniversal.ToggleESP(enabled)
+    ctg(vc, "ESP", function(en)
+        _G.tesp(en)
     end)
 
-    CreateToggle(visualContent, "ESP - Boxes", function(enabled)
-        BloodyUniversal.ESPSettings.Boxes = enabled
+    ctg(vc, "ESP - Boxes", function(en)
+        _G.esp.bx = en
     end)
 
-    CreateToggle(visualContent, "ESP - Names", function(enabled)
-        BloodyUniversal.ESPSettings.Names = enabled
+    ctg(vc, "ESP - Names", function(en)
+        _G.esp.nm = en
     end)
 
-    CreateToggle(visualContent, "ESP - Distance", function(enabled)
-        BloodyUniversal.ESPSettings.Distance = enabled
+    ctg(vc, "ESP - Distance", function(en)
+        _G.esp.ds = en
     end)
 
-    CreateToggle(visualContent, "ESP - Health Bars", function(enabled)
-        BloodyUniversal.ESPSettings.HealthBars = enabled
+    ctg(vc, "ESP - Health", function(en)
+        _G.esp.hp = en
     end)
 
-    CreateToggle(visualContent, "ESP - Tracers", function(enabled)
-        BloodyUniversal.ESPSettings.Tracers = enabled
+    ctg(vc, "ESP - Tracers", function(en)
+        _G.esp.tr = en
     end)
 
-    CreateToggle(visualContent, "ESP - Team Check", function(enabled)
-        BloodyUniversal.ESPSettings.TeamCheck = enabled
+    ctg(vc, "ESP - Team Check", function(en)
+        _G.esp.tm = en
     end)
 
-    CreateToggle(visualContent, "Fullbright", function(enabled)
-        BloodyUniversal.ToggleFullbright(enabled)
+    ctg(vc, "Fullbright", function(en)
+        _G.tfb(en)
     end)
 
-    -- Combat Section
-    local combatSection, combatContent = CreateSection(container, "⚔️ Combat")
+    -- Combat
+    local cs, cc = csc(cn, "Combat")
 
-    CreateToggle(combatContent, "Anti-Aim", function(enabled)
-        BloodyUniversal.ToggleAntiAim(enabled)
+    ctg(cc, "Anti-Aim", function(en)
+        _G.taa(en)
     end)
 
-    -- Logs Section
-    local logsSection, logsContent = CreateSection(container, "📋 Logs")
+    -- Logs
+    local ls, lc = csc(cn, "Logs")
 
-    local logsDisplay = Instance.new("ScrollingFrame")
-    logsDisplay.Size = UDim2.new(1, -10, 0, 200)
-    logsDisplay.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-    logsDisplay.BackgroundTransparency = 0.5
-    logsDisplay.BorderSizePixel = 0
-    logsDisplay.ScrollBarThickness = 6
-    logsDisplay.CanvasSize = UDim2.new(0, 0, 0, 0)
-    logsDisplay.ZIndex = 4
-    logsDisplay.Parent = logsContent
+    local ld = Instance.new("ScrollingFrame")
+    ld.Size = UDim2.new(1, -10, 0, 200)
+    ld.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    ld.BackgroundTransparency = 0.5
+    ld.BorderSizePixel = 0
+    ld.ScrollBarThickness = 6
+    ld.CanvasSize = UDim2.new(0, 0, 0, 0)
+    ld.ZIndex = 4
+    ld.Parent = lc
 
-    local logsCorner = Instance.new("UICorner")
-    logsCorner.CornerRadius = UDim.new(0, 6)
-    logsCorner.Parent = logsDisplay
+    local ldc = Instance.new("UICorner")
+    ldc.CornerRadius = UDim.new(0, 6)
+    ldc.Parent = ld
 
-    local logsLayout = Instance.new("UIListLayout")
-    logsLayout.Padding = UDim.new(0, 2)
-    logsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    logsLayout.Parent = logsDisplay
+    local ll = Instance.new("UIListLayout")
+    ll.Padding = UDim.new(0, 2)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.Parent = ld
 
-    local function RefreshLogs()
-        for _, child in ipairs(logsDisplay:GetChildren()) do
-            if child:IsA("TextLabel") then
-                child:Destroy()
+    local function rf()
+        for _, ch in ipairs(ld:GetChildren()) do
+            if ch:IsA("TextLabel") then
+                ch:Destroy()
             end
         end
 
-        for _, logEntry in ipairs(BloodyUniversal.Logs or {}) do
-            local logLabel = Instance.new("TextLabel")
-            logLabel.Size = UDim2.new(1, -10, 0, 20)
-            logLabel.BackgroundTransparency = 1
-            logLabel.Text = logEntry
-            logLabel.TextColor3 = Color3.new(1, 1, 1)
-            logLabel.TextSize = 12
-            logLabel.Font = Enum.Font.Code
-            logLabel.TextXAlignment = Enum.TextXAlignment.Left
-            logLabel.TextWrapped = true
-            logLabel.ZIndex = 5
-            logLabel.Parent = logsDisplay
+        for _, le in ipairs(_G.l or {}) do
+            local ll = Instance.new("TextLabel")
+            ll.Size = UDim2.new(1, -10, 0, 20)
+            ll.BackgroundTransparency = 1
+            ll.Text = le
+            ll.TextColor3 = Color3.new(1, 1, 1)
+            ll.TextSize = 12
+            ll.Font = Enum.Font.Code
+            ll.TextXAlignment = Enum.TextXAlignment.Left
+            ll.TextWrapped = true
+            ll.ZIndex = 5
+            ll.Parent = ld
         end
 
-        logsDisplay.CanvasSize = UDim2.new(0, 0, 0, logsLayout.AbsoluteContentSize.Y + 10)
+        ld.CanvasSize = UDim2.new(0, 0, 0, ll.AbsoluteContentSize.Y + 10)
     end
 
-    CreateButton(logsContent, "Refresh", RefreshLogs)
+    cbt(lc, "Refresh", rf)
 
-    CreateButton(logsContent, "Copy All", function()
-        local allLogs = table.concat(BloodyUniversal.Logs or {}, "\n")
-        setclipboard(allLogs)
-        Log("Логи скопированы в буфер обмена", "LOGS")
+    cbt(lc, "Copy All", function()
+        local al = table.concat(_G.l or {}, "\n")
+        setclipboard(al)
+        lg("Logs copied", "SYS")
     end)
 
-    -- Settings Section
-    local settingsSection, settingsContent = CreateSection(container, "⚙️ Settings")
+    -- Settings
+    local ss, stc = csc(cn, "Settings")
 
-    CreateButton(settingsContent, "Disable All", function()
-        for feature, enabled in pairs(BloodyUniversal.Enabled) do
-            if enabled then
-                if feature == "Fly" then
-                    BloodyUniversal.ToggleFly(false)
-                elseif feature == "Noclip" then
-                    BloodyUniversal.ToggleNoclip(false)
-                elseif feature == "WalkOnWater" then
-                    BloodyUniversal.ToggleWalkOnWater(false)
-                elseif feature == "Speed" then
-                    BloodyUniversal.ToggleSpeed(false)
-                elseif feature == "Fullbright" then
-                    BloodyUniversal.ToggleFullbright(false)
-                elseif feature == "AntiAim" then
-                    BloodyUniversal.ToggleAntiAim(false)
+    cbt(stc, "Disable All", function()
+        for f, en in pairs(_G.e) do
+            if en then
+                if f == "fly" then
+                    _G.tfly(false)
+                elseif f == "nc" then
+                    _G.tnc(false)
+                elseif f == "ww" then
+                    _G.tww(false)
+                elseif f == "sp" then
+                    _G.tsp(false)
+                elseif f == "fb" then
+                    _G.tfb(false)
+                elseif f == "aa" then
+                    _G.taa(false)
                 end
             end
         end
 
-        BloodyUniversal.ToggleESP(false)
+        _G.tesp(false)
 
-        Log("Все функции отключены", "SETTINGS")
+        lg("All disabled", "SYS")
     end)
 
-    CreateButton(settingsContent, "SAFE EXIT", function()
-        SafeCleanup()
+    cbt(stc, "EXIT", function()
+        clr()
 
-        if gui then
-            gui:Destroy()
+        if gu then
+            gu:Destroy()
         end
 
-        Log("Safe exit выполнен — UI уничтожено", "SETTINGS")
+        lg("Exit complete", "SYS")
     end)
 
-    gui.Parent = game:GetService("CoreGui")
+    gu.Parent = game:GetService("CoreGui")
 
-    Log("UI создан успешно", "INIT")
+    lg("UI loaded", "SYS")
 end
 
--- Toggle UI visibility
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+-- Toggle UI
+s3.InputBegan:Connect(function(ip, gp)
+    if gp then return end
 
-    if input.KeyCode == Enum.KeyCode.Insert then
-        local gui = game:GetService("CoreGui"):FindFirstChild("BloodyUniversalUI")
-        if gui then
-            local mainFrame = gui:FindFirstChild("MainFrame")
-            if mainFrame then
-                mainFrame.Visible = not mainFrame.Visible
-                Log("UI переключено: " .. tostring(mainFrame.Visible), "UI")
+    if ip.KeyCode == Enum.KeyCode.Insert then
+        for _, ch in ipairs(game:GetService("CoreGui"):GetChildren()) do
+            if ch:IsA("ScreenGui") and ch.Name:match("^_") then
+                for _, mf in ipairs(ch:GetChildren()) do
+                    if mf:IsA("Frame") and mf.Name:match("^_") then
+                        mf.Visible = not mf.Visible
+                        lg("UI toggled: " .. tostring(mf.Visible), "UI")
+                        break
+                    end
+                end
+                break
             end
         end
     end
 end)
 
 -- Initialize
-SetupAntiAFK()
-BuildUI()
+task.spawn(function()
+    aafk()
+    task.wait(0.5)
+    bld()
+    lg("Universal v" .. _G.v .. " loaded", "SYS")
+    lg("Press INSERT to toggle", "SYS")
+end)
 
-Log("BloodyBlox Universal v" .. BloodyUniversal.Version .. " загружен", "INIT")
-Log("Insert — открыть/закрыть меню", "INIT")
-Log("Универсальный чит (только клиентские функции)", "INIT")
-
-return BloodyUniversal
+return _G
