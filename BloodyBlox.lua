@@ -1,5 +1,5 @@
 --[[
-    BloodyBlox v0.5.0
+    BloodyBlox v0.5.1
     Muscle Legends helper / analyzer
 
     Core fixes:
@@ -13,6 +13,7 @@
     - Config loading merges known settings instead of replacing the settings table.
     - Remote captures serialize arrays/dictionaries/Instances without guessing arguments.
     - Game load guard prevents CoreGui nil crash on cold start (v0.5.0).
+    - Auto Bad Aura farm added (v0.5.1).
 ]]
 
 -- Wait for game to fully load before initializing
@@ -80,7 +81,7 @@ local function getGlobal(name)
 end
 
 local BloodyBlox = {
-    Version = "0.5.0",
+    Version = "0.5.1",
     MenuOpen = true,
     Player = LocalPlayer,
     Connections = {},
@@ -111,6 +112,8 @@ local BloodyBlox = {
         RebirthInterval = 2,
         CombatFarm = false,
         CombatInterval = 0.25,
+        BadAuraFarm = false,
+        BadAuraInterval = 0.1,
     },
     State = {
         LogContainer = nil,
@@ -357,6 +360,31 @@ function Analyzer:ScanRemotes()
     return list
 end
 
+function Analyzer:ScanNPCs()
+    local npcs = {}
+    for _, object in ipairs(Workspace:GetDescendants()) do
+        if object:IsA("Model") and object:FindFirstChild("Humanoid") and object:FindFirstChild("HumanoidRootPart") then
+            local name = object.Name:lower()
+            if name:find("bad") or name:find("aura") or name:find("enemy") or name:find("npc") or name:find("boss") then
+                local humanoid = object.Humanoid
+                local hrp = object.HumanoidRootPart
+                table.insert(npcs, {
+                    name = object.Name,
+                    health = humanoid.Health,
+                    maxHealth = humanoid.MaxHealth,
+                    position = hrp.Position,
+                })
+            end
+        end
+    end
+    BloodyBlox:Log("Analyzer", "Found " .. tostring(#npcs) .. " NPCs", "info")
+    for index, npc in ipairs(npcs) do
+        BloodyBlox:Log("NPC", string.format("[%d] %s | HP: %.0f/%.0f | Pos: %s",
+            index, npc.name, npc.health, npc.maxHealth, tostring(npc.position)), "info")
+    end
+    return npcs
+end
+
 function Analyzer:StartCapture(actionName)
     self:InstallHook()
     BloodyBlox.State.CapturingAction = tostring(actionName)
@@ -588,6 +616,76 @@ function Farm:Start(name, interval, profileName)
     return true
 end
 
+function Farm:StartBadAura()
+    self:Stop("BadAura")
+
+    local state = {running = true}
+    self.Tasks.BadAura = state
+
+    task.spawn(function()
+        while state.running do
+            pcall(function()
+                local myRoot = BloodyBlox:GetHRP()
+                if not myRoot then return end
+
+                -- Find closest Bad Aura NPC
+                local closest = nil
+                local closestDist = math.huge
+
+                for _, object in ipairs(Workspace:GetDescendants()) do
+                    if object:IsA("Model") and object:FindFirstChild("Humanoid") and object:FindFirstChild("HumanoidRootPart") then
+                        local name = object.Name:lower()
+                        if name:find("bad") or name:find("aura") or name:find("enemy") or name:find("npc") then
+                            local humanoid = object.Humanoid
+                            local npcRoot = object.HumanoidRootPart
+                            if humanoid.Health > 0 then
+                                local dist = (myRoot.Position - npcRoot.Position).Magnitude
+                                if dist < closestDist then
+                                    closest = object
+                                    closestDist = dist
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if not closest then return end
+
+                local targetRoot = closest.HumanoidRootPart
+                if not targetRoot then return end
+
+                -- Teleport to NPC (3 studs in front)
+                local targetPos = targetRoot.Position + (targetRoot.CFrame.LookVector * 3)
+                myRoot.CFrame = CFrame.new(targetPos, targetRoot.Position)
+
+                -- Spam attack
+                if type(mouse1press) == "function" and type(mouse1release) == "function" then
+                    mouse1press()
+                    task.wait(0.01)
+                    mouse1release()
+                end
+
+                -- Fire combat remotes
+                for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
+                    if remote:IsA("RemoteEvent") then
+                        local remoteName = remote.Name:lower()
+                        if remoteName:find("punch") or remoteName:find("attack") or remoteName:find("hit") or remoteName:find("damage") then
+                            pcall(function()
+                                remote:FireServer(closest)
+                            end)
+                        end
+                    end
+                end
+            end)
+
+            task.wait(BloodyBlox.Settings.BadAuraInterval or 0.1)
+        end
+    end)
+
+    BloodyBlox:Log("Farm", "Bad Aura farm started", "warn")
+    return true
+end
+
 --============================================================
 -- ESP
 --============================================================
@@ -772,18 +870,14 @@ end
 
 local PlayerTools = {}
 
--- Convert slider value (1-16) to actual blocks per second
 local function calculateFlySpeed(sliderValue)
     local value = math.clamp(tonumber(sliderValue) or 5, 1, 16)
     if value <= 10 then
-        -- Linear: 1-10 = 1-10 blocks/s
         return value
     else
-        -- Exponential curve for 11-16
-        -- 11→12, 12→14, 13→16, 14→18, 15→19, 16→20
         local excess = value - 10
         if excess <= 3 then
-            return 10 + (excess * 2)  -- 12, 14, 16
+            return 10 + (excess * 2)
         elseif excess == 4 then
             return 18
         elseif excess == 5 then
@@ -913,7 +1007,7 @@ function PlayerTools:ToggleFly(enabled)
         end
 
         local blocksPerSecond = calculateFlySpeed(BloodyBlox.Settings.FlySpeed)
-        local speed = blocksPerSecond * 50  -- studs per block
+        local speed = blocksPerSecond * 50
         self.FlyVelocity.VectorVelocity = direction * speed
     end)
     BloodyBlox:AddConnection(self.FlyConnection)
@@ -951,7 +1045,6 @@ function PlayerTools:ToggleGodMode(enabled)
             maxHealth = 100
         end
 
-        -- RenderStepped loop: restore Health every frame
         self.GodModeConnection = RunService.RenderStepped:Connect(function()
             if not BloodyBlox.Settings.GodMode then
                 return
@@ -967,15 +1060,13 @@ function PlayerTools:ToggleGodMode(enabled)
         return true
     end
 
-    -- Setup for current character
     if not setupGodMode() then
         BloodyBlox:Log("Player", "God Mode: Humanoid unavailable", "error")
         return
     end
 
-    -- Reconnect on character respawn
     self.GodModeCharacterConnection = LocalPlayer.CharacterAdded:Connect(function()
-        task.wait(0.5)  -- wait for character to fully load
+        task.wait(0.5)
         if BloodyBlox.Settings.GodMode then
             setupGodMode()
         end
@@ -1608,6 +1699,9 @@ UI:AddLabel(MainTab, "Local tools work independently. Game actions require real 
 UI:AddButton(MainTab, "Analyze Remotes", function()
     Analyzer:ScanRemotes()
 end)
+UI:AddButton(MainTab, "Scan NPCs", function()
+    Analyzer:ScanNPCs()
+end)
 UI:AddButton(MainTab, "Save Profiles", function()
     Analyzer:SaveProfiles()
 end)
@@ -1671,6 +1765,18 @@ UI:AddToggle(FarmTab, "Combat Farm", false, function(state)
 end)
 UI:AddNumberBox(FarmTab, "Combat interval", 0.25, function(value)
     BloodyBlox.Settings.CombatInterval = math.max(0.05, value)
+end)
+
+UI:AddToggle(FarmTab, "Bad Aura Farm", false, function(state)
+    BloodyBlox.Settings.BadAuraFarm = state
+    if state then
+        Farm:StartBadAura()
+    else
+        Farm:Stop("BadAura")
+    end
+end)
+UI:AddNumberBox(FarmTab, "Bad Aura interval", 0.1, function(value)
+    BloodyBlox.Settings.BadAuraInterval = math.max(0.05, value)
 end)
 
 local AnalyzerTab = UI:AddTab("Analyzer")
@@ -1828,11 +1934,13 @@ UI:AddButton(SettingsTab, "Disable All", function()
     BloodyBlox.Settings.DurabilityFarm = false
     BloodyBlox.Settings.AutoRebirth = false
     BloodyBlox.Settings.CombatFarm = false
+    BloodyBlox.Settings.BadAuraFarm = false
 
     Farm:Stop("Weight")
     Farm:Stop("Durability")
     Farm:Stop("Rebirth")
     Farm:Stop("Combat")
+    Farm:Stop("BadAura")
 
     ESP:Toggle(false)
     PlayerTools:ToggleFly(false)
@@ -1846,6 +1954,7 @@ UI:AddButton(SettingsTab, "EXIT", function()
     Farm:Stop("Durability")
     Farm:Stop("Rebirth")
     Farm:Stop("Combat")
+    Farm:Stop("BadAura")
 
     ESP:Toggle(false)
     PlayerTools:ToggleFly(false)
@@ -1928,6 +2037,3 @@ end))
 
 BloodyBlox:Log("System", "v" .. BloodyBlox.Version .. " loaded", "info")
 print("[BloodyBlox] Loaded. Insert = toggle menu")
-
-name:BloodyBlox_v0.4.0.lua
-path:/mnt/data/BloodyBlox_v0.4.0.lua
