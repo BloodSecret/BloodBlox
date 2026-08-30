@@ -1,19 +1,17 @@
 --[[
-    BloodyBlox v0.5.3
+    BloodyBlox v0.5.4
     Muscle Legends helper / analyzer
 
-    v0.5.3 changes (2026-08-30):
-    - Combat functions NO LONGER LOG (Kill Aura radius 1000 spam fixed)
-    - Watermark with FPS counter added (top-left corner)
-    - Main tab removed
-    - Analyzer tab expanded with all analysis functions
-    - Fly fixed: uses BodyVelocity with MaxForce properly set
-    - InfiniteJump fixed: uses :ChangeState(Jumping) correctly
-    - Anti-AFK hidden (still works, no UI toggle)
-    - Misc tab added: WalkWithDumbbell, FastStrafe
-    - Teleport points auto-save on add/delete
-    - Config auto-save on settings change
-    - Settings tab: Watermark toggle, Menu Scale slider (0.5-3.0)
+    v0.5.4 changes (2026-08-31):
+    - FastHits throttle added (0.05s cooldown, fixed lag)
+    - Watermark draggable with MoveWatermark toggle
+    - Watermark position fixed (above chat, right side, persists after close)
+    - Menu scale changed to textbox input (removed slider)
+    - WalkWithDumbbell speed fixed (25 instead of 16)
+    - FastStrafe fixed (removes inertia via AssemblyLinearVelocity)
+    - AntiRagdoll added (prevents falling when hit)
+    - Teleport/Config UI rebuilt (inline Delete/Overwrite buttons)
+    - All Combat logging removed (Kill Aura + Fast Hits silent)
 
     Core architecture:
     - No loadstring() call is used inside this file.
@@ -93,7 +91,7 @@ local function getGlobal(name)
 end
 
 local BloodyBlox = {
-    Version = "0.5.3",
+    Version = "0.5.4",
     MenuOpen = true,
     Player = LocalPlayer,
     Connections = {},
@@ -131,7 +129,9 @@ local BloodyBlox = {
         FastHits = false,
         WalkWithDumbbell = false,
         FastStrafe = false,
+        AntiRagdoll = false,
         ShowWatermark = true,
+        WatermarkDraggable = false,
         MenuScale = 1.0,
     },
     State = {
@@ -837,7 +837,12 @@ function Combat:ToggleFastHits(enabled)
         return
     end
 
+    local lastHit = 0
     self.FastHitsConnection = RunService.Heartbeat:Connect(function()
+        local now = os.clock()
+        if now - lastHit < 0.05 then return end
+        lastHit = now
+
         pcall(function()
             local myRoot = BloodyBlox:GetHRP()
             if not myRoot then return end
@@ -916,10 +921,7 @@ function Misc:ToggleWalkWithDumbbell(enabled)
     self.WalkWithDumbbellConnection = RunService.Heartbeat:Connect(function()
         local humanoid = BloodyBlox:GetHumanoid()
         if humanoid then
-            if humanoid.WalkSpeed ~= BloodyBlox.State.OriginalWalkSpeed then
-                BloodyBlox.State.OriginalWalkSpeed = humanoid.WalkSpeed
-            end
-            humanoid.WalkSpeed = 16
+            humanoid.WalkSpeed = 25
         end
     end)
     BloodyBlox:AddConnection(self.WalkWithDumbbellConnection)
@@ -939,12 +941,32 @@ function Misc:ToggleFastStrafe(enabled)
 
     self.FastStrafeConnection = RunService.Heartbeat:Connect(function()
         local root = BloodyBlox:GetHRP()
-        local humanoid = BloodyBlox:GetHumanoid()
-        if root and humanoid and humanoid.MoveDirection.Magnitude > 0 then
-            root.CFrame = root.CFrame + humanoid.MoveDirection * 0.1
+        if root then
+            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X * 0.5, root.AssemblyLinearVelocity.Y, root.AssemblyLinearVelocity.Z * 0.5)
         end
     end)
     BloodyBlox:AddConnection(self.FastStrafeConnection)
+end
+
+function Misc:ToggleAntiRagdoll(enabled)
+    BloodyBlox.Settings.AntiRagdoll = enabled
+
+    if self.AntiRagdollConnection then
+        safeDisconnect(self.AntiRagdollConnection)
+        self.AntiRagdollConnection = nil
+    end
+
+    if not enabled then
+        return
+    end
+
+    self.AntiRagdollConnection = RunService.Heartbeat:Connect(function()
+        local humanoid = BloodyBlox:GetHumanoid()
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
+    end)
+    BloodyBlox:AddConnection(self.AntiRagdollConnection)
 end
 
 --============================================================
@@ -1657,29 +1679,31 @@ function UI:Create()
     create("UICorner", {CornerRadius = UDim.new(0, 8)}, self.Content)
 
     -- Watermark
-    self.Watermark = create("TextLabel", {
+    self.Watermark = create("Frame", {
         Size = UDim2.fromOffset(200, 60),
-        Position = UDim2.fromOffset(10, 10),
+        Position = UDim2.new(1, -210, 1, -230),
         BackgroundColor3 = Color3.fromRGB(10, 10, 15),
         BackgroundTransparency = 0.3,
         BorderSizePixel = 0,
+        Active = false,
+        Draggable = false,
+    }, self.Gui)
+    create("UICorner", {CornerRadius = UDim.new(0, 8)}, self.Watermark)
+
+    local watermarkLabel = create("TextLabel", {
+        Size = UDim2.new(1, -16, 1, -10),
+        Position = UDim2.fromOffset(8, 5),
+        BackgroundTransparency = 1,
         Text = "BloodyBlox v" .. BloodyBlox.Version .. "\nFPS: 0",
         TextColor3 = Color3.fromRGB(255, 255, 255),
         Font = Enum.Font.GothamBold,
         TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
-        Visible = BloodyBlox.Settings.ShowWatermark,
-    }, self.Gui)
-    create("UICorner", {CornerRadius = UDim.new(0, 8)}, self.Watermark)
-    create("UIPadding", {
-        PaddingTop = UDim.new(0, 5),
-        PaddingBottom = UDim.new(0, 5),
-        PaddingLeft = UDim.new(0, 8),
-        PaddingRight = UDim.new(0, 8),
     }, self.Watermark)
 
-    BloodyBlox.State.WatermarkLabel = self.Watermark
+    self.Watermark.Visible = BloodyBlox.Settings.ShowWatermark
+    BloodyBlox.State.WatermarkLabel = watermarkLabel
     BloodyBlox.State.UI = self
 
     -- FPS counter
@@ -1695,8 +1719,8 @@ function UI:Create()
             frameCount = 0
             lastTime = currentTime
 
-            if self.Watermark and BloodyBlox.Settings.ShowWatermark then
-                self.Watermark.Text = string.format("BloodyBlox v%s\nFPS: %d", BloodyBlox.Version, fps)
+            if watermarkLabel and BloodyBlox.Settings.ShowWatermark then
+                watermarkLabel.Text = string.format("BloodyBlox v%s\nFPS: %d", BloodyBlox.Version, fps)
             end
         end
     end)
@@ -2174,6 +2198,10 @@ UI:AddToggle(MiscTab, "Fast Strafe", false, function(state)
     Misc:ToggleFastStrafe(state)
     BloodyBlox:SaveConfig()
 end)
+UI:AddToggle(MiscTab, "Anti Ragdoll", false, function(state)
+    Misc:ToggleAntiRagdoll(state)
+    BloodyBlox:SaveConfig()
+end)
 
 local VisualTab = UI:AddTab("Visual")
 UI:AddToggle(VisualTab, "ESP", false, function(state)
@@ -2294,10 +2322,21 @@ UI:AddToggle(SettingsTab, "Show Watermark", true, function(state)
     end
     BloodyBlox:SaveConfig()
 end)
-UI:AddSlider(SettingsTab, "Menu Scale", 0.5, 3.0, 1.0, function(value)
-    BloodyBlox.Settings.MenuScale = value
-    UI:UpdateScale(value)
+UI:AddToggle(SettingsTab, "Move Watermark", false, function(state)
+    BloodyBlox.Settings.WatermarkDraggable = state
+    if UI.Watermark then
+        UI.Watermark.Active = state
+        UI.Watermark.Draggable = state
+    end
     BloodyBlox:SaveConfig()
+end)
+UI:AddTextBox(SettingsTab, "Menu Scale (0.5-3.0)", function(text)
+    local value = tonumber(text)
+    if value and value >= 0.5 and value <= 3.0 then
+        BloodyBlox.Settings.MenuScale = value
+        UI:UpdateScale(value)
+        BloodyBlox:SaveConfig()
+    end
 end)
 UI:AddButton(SettingsTab, "Disable All", function()
     BloodyBlox.Settings.ESP = false
