@@ -1,4 +1,4 @@
--- BloodyBlox v0.5.8
+-- BloodyBlox v0.5.9
 
 repeat task.wait() until game:IsLoaded()
 repeat task.wait() until game.Players.LocalPlayer
@@ -37,6 +37,7 @@ local settings = {
     antiAimSpeed = 5,
     antiAimType = "Jitter",
     killAura = false,
+    killAuraRange = 20,
     fastHits = false,
     remoteSpy = false,
     walkWithDumbbell = false,
@@ -44,6 +45,7 @@ local settings = {
     fastStrafe = false,
     antiRagdoll = false,
     airStrafe = false,
+    airStrafeSpeed = 30,
     espEnabled = false,
     espBoxes = true,
     espNames = true,
@@ -77,11 +79,37 @@ local originalNamecall
 local captureActive = false
 local capturedRemotes = {}
 
+local cachedWeightRemotes = {}
+local cachedDurabilityRemotes = {}
+local cachedRebirthRemotes = {}
+local cachedAttackRemotes = {}
+local cachedPlayers = {}
+local lastPlayerCacheUpdate = 0
+
 local lastFastWeightFire = 0
 local lastDurabilityFire = 0
-local lastKillAuraFire = 0
+local lastKillAuraFire = {}
 local lastBadAuraFire = 0
-local lastFastHitsFire = 0
+local lastAutoWeightAction = 0
+local lastAutoDurabilityAction = 0
+
+local goodAuraRanks = {
+    "Ангел Защитник",
+    "Пример для подражания",
+    "Спаситель",
+    "Авангард",
+    "Защитник",
+    "Миротворец",
+    "Чемпион",
+    "Мститель",
+    "Герой",
+    "Хранитель",
+    "Принудитель",
+    "Охранник",
+    "Красивая",
+    "Нейтральный",
+    ""
+}
 
 local function addLog(category, message)
     local timestamp = os.date("%H:%M:%S")
@@ -128,6 +156,49 @@ local function loadTeleportPoints()
         teleportPoints = HttpService:JSONDecode(readfile("bloodyblox_teleports.json"))
         addLog("Teleport", "Loaded " .. #teleportPoints .. " points")
     end
+end
+
+local function cacheRemotes(keywords, cacheTable)
+    table.clear(cacheTable)
+    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+        if remote:IsA("RemoteEvent") then
+            local name = remote.Name:lower()
+            for _, keyword in ipairs(keywords) do
+                if string.find(name, keyword) then
+                    table.insert(cacheTable, remote)
+                    break
+                end
+            end
+        end
+    end
+    addLog("Cache", "Cached " .. #cacheTable .. " remotes for " .. table.concat(keywords, "/"))
+end
+
+local function getPlayerAuraRank(targetPlayer)
+    if not targetPlayer.Character then return nil end
+
+    local head = targetPlayer.Character:FindFirstChild("Head")
+    if not head then return nil end
+
+    for _, gui in pairs(head:GetChildren()) do
+        if gui:IsA("BillboardGui") then
+            for _, label in pairs(gui:GetDescendants()) do
+                if label:IsA("TextLabel") then
+                    local text = label.Text
+                    for _, rank in ipairs(goodAuraRanks) do
+                        if rank ~= "" and string.find(text, rank) then
+                            return rank
+                        end
+                    end
+                    if text == "" or text == " " then
+                        return ""
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
 end
 
 local function createESP(target)
@@ -386,7 +457,7 @@ local function createWatermark()
     title.Size = UDim2.new(1, 0, 0.5, 0)
     title.Position = UDim2.new(0, 0, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "BloodyBlox v0.5.8"
+    title.Text = "BloodyBlox v0.5.9"
     title.TextColor3 = Color3.fromRGB(255, 50, 50)
     title.TextSize = 16
     title.Font = Enum.Font.GothamBold
@@ -481,7 +552,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(0.5, 0, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BloodyBlox v0.5.8 | Muscle Legends"
+title.Text = "BloodyBlox v0.5.9 | Muscle Legends"
 title.TextColor3 = Color3.fromRGB(255, 50, 50)
 title.TextSize = 18
 title.Font = Enum.Font.GothamBold
@@ -884,19 +955,40 @@ local function createTextBox(parent, text, settingKey, callback)
 end
 
 local farmTab = createTab("Farm")
-createToggle(farmTab, "Fast Weight", "fastWeight")
+createToggle(farmTab, "Fast Weight", "fastWeight", function(enabled)
+    if enabled then
+        cacheRemotes({"weight", "lift", "train", "exercise"}, cachedWeightRemotes)
+    end
+end)
 createToggle(farmTab, "Auto Weight", "autoWeight")
-createToggle(farmTab, "Durability Farm", "durabilityFarm")
+createToggle(farmTab, "Durability Farm", "durabilityFarm", function(enabled)
+    if enabled then
+        cacheRemotes({"durability", "defense", "pushup", "situp", "handstand"}, cachedDurabilityRemotes)
+    end
+end)
 createToggle(farmTab, "Auto Durability", "autoDurability")
-createToggle(farmTab, "Auto Rebirth", "autoRebirth")
-createToggle(farmTab, "Bad Aura Farm", "badAuraFarm")
+createToggle(farmTab, "Auto Rebirth", "autoRebirth", function(enabled)
+    if enabled then
+        cacheRemotes({"rebirth", "prestige", "reset"}, cachedRebirthRemotes)
+    end
+end)
+createToggle(farmTab, "Bad Aura Farm", "badAuraFarm", function(enabled)
+    if enabled then
+        cacheRemotes({"punch", "attack", "hit", "combat"}, cachedAttackRemotes)
+    end
+end)
 createSlider(farmTab, "Bad Aura Interval", "badAuraInterval", 1, 60)
 
 local combatTab = createTab("Combat")
 createToggle(combatTab, "Anti-Aim", "antiAim")
 createSlider(combatTab, "Anti-Aim Speed", "antiAimSpeed", 1, 10)
 createDropdown(combatTab, "Anti-Aim Type", "antiAimType", {"Static", "Jitter", "Spin", "Random", "Desync", "FakeYaw", "FakeLag", "Freestanding", "ManualAA", "EdgeAA"})
-createToggle(combatTab, "Kill Aura", "killAura")
+createToggle(combatTab, "Kill Aura", "killAura", function(enabled)
+    if enabled then
+        cacheRemotes({"punch", "attack", "hit", "combat"}, cachedAttackRemotes)
+    end
+end)
+createSlider(combatTab, "Kill Aura Range", "killAuraRange", 5, 50)
 createToggle(combatTab, "Fast Hits", "fastHits")
 
 local analyzerTab = createTab("Analyzer")
@@ -1014,6 +1106,7 @@ createSlider(miscTab, "Walk Speed", "walkSpeed", 16, 100)
 createToggle(miscTab, "Fast Strafe", "fastStrafe")
 createToggle(miscTab, "Anti Ragdoll", "antiRagdoll")
 createToggle(miscTab, "Air Strafe", "airStrafe")
+createSlider(miscTab, "Air Strafe Speed", "airStrafeSpeed", 10, 100)
 
 local visualTab = createTab("Visual")
 createToggle(visualTab, "ESP", "espEnabled", function(enabled)
@@ -1067,22 +1160,22 @@ createToggle(playerTab, "Fly", "fly", function(enabled)
             local direction = Vector3.new(0, 0, 0)
 
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                direction = direction + (camera.CFrame.LookVector * settings.flySpeed)
+                direction = direction + (camera.CFrame.LookVector * settings.flySpeed * 10)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                direction = direction - (camera.CFrame.LookVector * settings.flySpeed)
+                direction = direction - (camera.CFrame.LookVector * settings.flySpeed * 10)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                direction = direction - (camera.CFrame.RightVector * settings.flySpeed)
+                direction = direction - (camera.CFrame.RightVector * settings.flySpeed * 10)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                direction = direction + (camera.CFrame.RightVector * settings.flySpeed)
+                direction = direction + (camera.CFrame.RightVector * settings.flySpeed * 10)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                direction = direction + Vector3.new(0, settings.flySpeed, 0)
+                direction = direction + Vector3.new(0, settings.flySpeed * 10, 0)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                direction = direction - Vector3.new(0, settings.flySpeed, 0)
+                direction = direction - Vector3.new(0, settings.flySpeed * 10, 0)
             end
 
             bodyVelocity.Velocity = direction
@@ -1394,73 +1487,70 @@ end)
 connections.antiAim = RunService.RenderStepped:Connect(function()
     if not settings.antiAim or not rootPart then return end
 
-    local speed = settings.antiAimSpeed * 5
-    local currentCFrame = rootPart.CFrame
-    local position = currentCFrame.Position
+    local speed = settings.antiAimSpeed
+    local currentVelocity = rootPart.Velocity
+    local position = rootPart.Position
 
     local modes = {
-        Static = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed), 0) end,
-        Jitter = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * (math.random() > 0.5 and 1 or -1)), 0) end,
-        Spin = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(tick() * speed * 50), 0) end,
-        Random = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(math.random(-speed, speed)), 0) end,
-        Desync = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * math.sin(tick() * 5)), 0) end,
+        Static = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 10), 0) end,
+        Jitter = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 10 * (math.random() > 0.5 and 1 or -1)), 0) end,
+        Spin = function() return CFrame.new(position) * CFrame.Angles(0, tick() * speed, 0) end,
+        Random = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(math.random(-180, 180)), 0) end,
+        Desync = function() return CFrame.new(position) * CFrame.Angles(0, math.sin(tick() * speed) * math.pi, 0) end,
         FakeYaw = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(180), 0) end,
         FakeLag = function()
-            if tick() % 0.5 < 0.25 then
-                return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 10), 0)
+            if math.floor(tick() * 2) % 2 == 0 then
+                return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 36), 0)
             end
-            return currentCFrame
+            return rootPart.CFrame
         end,
-        Freestanding = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * math.cos(tick() * 3)), 0) end,
+        Freestanding = function() return CFrame.new(position) * CFrame.Angles(0, math.cos(tick() * speed) * math.pi, 0) end,
         ManualAA = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 20), 0) end,
-        EdgeAA = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * math.sin(tick() * 10)), 0) end
+        EdgeAA = function() return CFrame.new(position) * CFrame.Angles(0, math.sin(tick() * speed * 2) * math.pi / 2, 0) end
     }
 
     local mode = modes[settings.antiAimType]
     if mode then
         rootPart.CFrame = mode()
+        rootPart.Velocity = currentVelocity
     end
 end)
 
 connections.killAura = RunService.Heartbeat:Connect(function()
-    if not settings.killAura then return end
-    if tick() - lastKillAuraFire < 0.5 then return end
+    if not settings.killAura or #cachedAttackRemotes == 0 then return end
 
-    for _, v in pairs(Players:GetPlayers()) do
+    if tick() - lastPlayerCacheUpdate > 1 then
+        cachedPlayers = Players:GetPlayers()
+        lastPlayerCacheUpdate = tick()
+    end
+
+    for _, v in pairs(cachedPlayers) do
         if v ~= player and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
-            local distance = (rootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude
-            if distance < 20 then
-                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                    if remote:IsA("RemoteEvent") then
-                        local name = remote.Name:lower()
-                        if string.find(name, "punch") or string.find(name, "attack") or string.find(name, "hit") or string.find(name, "combat") then
-                            pcall(function()
-                                remote:FireServer(v.Character.HumanoidRootPart)
-                            end)
-                            lastKillAuraFire = tick()
-                            break
-                        end
+            local targetId = tostring(v.UserId)
+            if not lastKillAuraFire[targetId] or tick() - lastKillAuraFire[targetId] > 0.5 then
+                local distance = (rootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude
+                if distance < settings.killAuraRange then
+                    for _, remote in pairs(cachedAttackRemotes) do
+                        pcall(function()
+                            remote:FireServer(v.Character.HumanoidRootPart)
+                        end)
                     end
+                    lastKillAuraFire[targetId] = tick()
+                    break
                 end
-                break
             end
         end
     end
 end)
 
 connections.fastWeight = RunService.Heartbeat:Connect(function()
-    if not settings.fastWeight then return end
+    if not settings.fastWeight or #cachedWeightRemotes == 0 then return end
     if tick() - lastFastWeightFire < 0.1 then return end
 
-    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-        if remote:IsA("RemoteEvent") then
-            local name = remote.Name:lower()
-            if string.find(name, "weight") or string.find(name, "lift") or string.find(name, "train") or string.find(name, "exercise") then
-                pcall(function()
-                    remote:FireServer()
-                end)
-            end
-        end
+    for _, remote in pairs(cachedWeightRemotes) do
+        pcall(function()
+            remote:FireServer()
+        end)
     end
 
     if humanoid and humanoid:FindFirstChildOfClass("Animator") then
@@ -1472,67 +1562,102 @@ connections.fastWeight = RunService.Heartbeat:Connect(function()
     lastFastWeightFire = tick()
 end)
 
+connections.autoWeight = RunService.Heartbeat:Connect(function()
+    if not settings.autoWeight then return end
+    if tick() - lastAutoWeightAction < 1 then return end
+
+    local weightTool = player.Backpack:FindFirstChild("Weight")
+    if weightTool then
+        humanoid:EquipTool(weightTool)
+        task.wait(0.1)
+        for _, remote in pairs(cachedWeightRemotes) do
+            pcall(function()
+                remote:FireServer()
+            end)
+        end
+    end
+
+    lastAutoWeightAction = tick()
+end)
+
 connections.durabilityFarm = RunService.Heartbeat:Connect(function()
-    if not settings.durabilityFarm then return end
+    if not settings.durabilityFarm or #cachedDurabilityRemotes == 0 then return end
     if tick() - lastDurabilityFire < 0.1 then return end
 
-    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-        if remote:IsA("RemoteEvent") then
-            local name = remote.Name:lower()
-            if string.find(name, "durability") or string.find(name, "defense") or string.find(name, "pushup") or string.find(name, "situp") then
-                pcall(function()
-                    remote:FireServer()
-                end)
-            end
-        end
+    for _, remote in pairs(cachedDurabilityRemotes) do
+        pcall(function()
+            remote:FireServer()
+        end)
     end
 
     lastDurabilityFire = tick()
 end)
 
-connections.autoRebirth = RunService.Heartbeat:Connect(function()
-    if not settings.autoRebirth then return end
+connections.autoDurability = RunService.Heartbeat:Connect(function()
+    if not settings.autoDurability then return end
+    if tick() - lastAutoDurabilityAction < 1 then return end
 
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("ClickDetector") and v.Parent and string.find(v.Parent.Name:lower(), "rebirth") then
-            pcall(function()
-                fireclickdetector(v)
-            end)
-        end
-    end
-
-    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-        if remote:IsA("RemoteEvent") then
-            local name = remote.Name:lower()
-            if string.find(name, "rebirth") or string.find(name, "prestige") or string.find(name, "reset") then
+    local tools = {"Pushups", "Situps", "Handstands"}
+    for _, toolName in ipairs(tools) do
+        local tool = player.Backpack:FindFirstChild(toolName)
+        if tool then
+            humanoid:EquipTool(tool)
+            task.wait(0.1)
+            for _, remote in pairs(cachedDurabilityRemotes) do
                 pcall(function()
                     remote:FireServer()
                 end)
             end
+            break
         end
+    end
+
+    lastAutoDurabilityAction = tick()
+end)
+
+connections.autoRebirth = RunService.Heartbeat:Connect(function()
+    if not settings.autoRebirth or #cachedRebirthRemotes == 0 then return end
+
+    for _, remote in pairs(cachedRebirthRemotes) do
+        pcall(function()
+            remote:FireServer()
+        end)
     end
 end)
 
 connections.badAuraFarm = RunService.Heartbeat:Connect(function()
-    if not settings.badAuraFarm then return end
+    if not settings.badAuraFarm or #cachedAttackRemotes == 0 then return end
     if tick() - lastBadAuraFire < settings.badAuraInterval then return end
 
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and string.find(v.Name:lower(), "bad") then
-            if (rootPart.Position - v.HumanoidRootPart.Position).Magnitude < 100 then
-                rootPart.CFrame = v.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                    if remote:IsA("RemoteEvent") then
-                        local name = remote.Name:lower()
-                        if string.find(name, "punch") or string.find(name, "attack") then
-                            pcall(function()
-                                remote:FireServer(v.HumanoidRootPart)
-                            end)
-                        end
+    if tick() - lastPlayerCacheUpdate > 1 then
+        cachedPlayers = Players:GetPlayers()
+        lastPlayerCacheUpdate = tick()
+    end
+
+    for _, v in pairs(cachedPlayers) do
+        if v ~= player and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+            local rank = getPlayerAuraRank(v)
+            if rank then
+                local hasGoodAura = false
+                for _, goodRank in ipairs(goodAuraRanks) do
+                    if rank == goodRank then
+                        hasGoodAura = true
+                        break
                     end
                 end
-                lastBadAuraFire = tick()
-                break
+
+                if hasGoodAura and (rootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude < 100 then
+                    rootPart.CFrame = v.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                    task.wait(0.05)
+                    for _, remote in pairs(cachedAttackRemotes) do
+                        pcall(function()
+                            remote:FireServer(v.Character.HumanoidRootPart)
+                        end)
+                    end
+                    lastBadAuraFire = tick()
+                    addLog("BadAura", "Attacking: " .. v.Name .. " [" .. rank .. "]")
+                    break
+                end
             end
         end
     end
@@ -1546,31 +1671,25 @@ connections.walkWithDumbbell = RunService.Heartbeat:Connect(function()
 end)
 
 connections.fastStrafe = RunService.Heartbeat:Connect(function()
-    if not settings.fastStrafe then return end
-    if humanoid then
-        humanoid.AutoRotate = false
+    if not settings.fastStrafe or not humanoid then return end
 
+    local moveDirection = humanoid.MoveDirection
+    if moveDirection.Magnitude > 0 then
         local camera = workspace.CurrentCamera
-        local moveDirection = humanoid.MoveDirection
-
-        if moveDirection.Magnitude > 0 then
-            local targetCFrame = CFrame.new(rootPart.Position, rootPart.Position + Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z))
-            rootPart.CFrame = targetCFrame
-        end
+        local cameraCFrame = CFrame.new(rootPart.Position, rootPart.Position + Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z))
+        rootPart.CFrame = CFrame.new(rootPart.Position, rootPart.Position + moveDirection)
     end
 end)
 
 connections.antiRagdoll = RunService.Stepped:Connect(function()
-    if not settings.antiRagdoll then return end
-    if humanoid then
-        humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-        humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-    end
+    if not settings.antiRagdoll or not humanoid then return end
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 end)
 
 connections.airStrafe = RunService.RenderStepped:Connect(function()
-    if not settings.airStrafe then return end
-    if humanoid and humanoid.FloorMaterial == Enum.Material.Air then
+    if not settings.airStrafe or not humanoid then return end
+    if humanoid.FloorMaterial == Enum.Material.Air then
         local camera = workspace.CurrentCamera
         local direction = Vector3.new(0, 0, 0)
 
@@ -1589,11 +1708,22 @@ connections.airStrafe = RunService.RenderStepped:Connect(function()
 
         if direction.Magnitude > 0 then
             local currentVelocity = rootPart.Velocity
-            local strafeForce = direction.Unit * 30
-            rootPart.Velocity = Vector3.new(
+            local strafeForce = direction.Unit * settings.airStrafeSpeed
+            local newHorizontalVelocity = Vector3.new(
                 currentVelocity.X + strafeForce.X,
-                currentVelocity.Y,
+                0,
                 currentVelocity.Z + strafeForce.Z
+            )
+
+            local maxSpeed = settings.airStrafeSpeed
+            if newHorizontalVelocity.Magnitude > maxSpeed then
+                newHorizontalVelocity = newHorizontalVelocity.Unit * maxSpeed
+            end
+
+            rootPart.Velocity = Vector3.new(
+                newHorizontalVelocity.X,
+                currentVelocity.Y,
+                newHorizontalVelocity.Z
             )
         end
     end
@@ -1608,6 +1738,6 @@ setfpscap(999)
 loadTeleportPoints()
 createWatermark()
 
-addLog("System", "BloodyBlox v0.5.8 loaded")
+addLog("System", "BloodyBlox v0.5.9 loaded")
 addLog("System", "Press INSERT to toggle menu")
-addLog("System", "All 10 tabs restored: Farm, Combat, Analyzer, Misc, Visual, Player, Teleport, Config, Logs, Settings")
+addLog("System", "Remote caching enabled - FPS drops fixed")
