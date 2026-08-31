@@ -387,50 +387,100 @@ end
 
 local function installRemoteHook()
     if remoteHookInstalled then return end
-    if not hookmetamethod or not getnamecallmethod or not newcclosure then
-        addLog("RemoteSpy", "Exploit does not support metamethod hooks")
+
+    if hookmetamethod and getnamecallmethod then
+        local wrapFunc = newcclosure or function(f) return f end
+
+        originalNamecall = hookmetamethod(game, "__namecall", wrapFunc(function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+
+            if settings.remoteSpy and (method == "FireServer" or method == "InvokeServer") then
+                local remoteName = tostring(self)
+                local argsStr = "NONE"
+                if #args > 0 then
+                    local argParts = {}
+                    for i, arg in ipairs(args) do
+                        local argType = typeof(arg)
+                        local argValue = tostring(arg)
+                        if argType == "table" then
+                            pcall(function()
+                                argValue = HttpService:JSONEncode(arg)
+                            end)
+                        end
+                        table.insert(argParts, string.format("[%d]=%s (%s)", i, argValue, argType))
+                    end
+                    argsStr = table.concat(argParts, ", ")
+                end
+
+                addLog("RemoteSpy", string.format("%s | %s | Args: %s", remoteName, method, argsStr))
+
+                if captureActive then
+                    table.insert(capturedRemotes, {
+                        name = remoteName,
+                        method = method,
+                        args = args,
+                        timestamp = os.date("%H:%M:%S")
+                    })
+                end
+            end
+
+            return originalNamecall(self, ...)
+        end))
+
+        remoteHookInstalled = true
+        addLog("RemoteSpy", "Hook installed (metamethod)")
         return
     end
 
-    originalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
+    if hookfunction then
+        addLog("RemoteSpy", "Trying hookfunction method (Xeno fallback)")
 
-        if settings.remoteSpy and (method == "FireServer" or method == "InvokeServer") then
-            local remoteName = tostring(self)
-            local argsStr = "NONE"
-            if #args > 0 then
-                local argParts = {}
-                for i, arg in ipairs(args) do
-                    local argType = typeof(arg)
-                    local argValue = tostring(arg)
-                    if argType == "table" then
-                        pcall(function()
-                            argValue = HttpService:JSONEncode(arg)
-                        end)
+        local oldFireServer = Instance.new("RemoteEvent").FireServer
+        local oldInvokeServer = Instance.new("RemoteFunction").InvokeServer
+
+        local newFireServer = hookfunction(oldFireServer, function(self, ...)
+            local args = {...}
+
+            if settings.remoteSpy then
+                local remoteName = tostring(self)
+                local argsStr = "NONE"
+                if #args > 0 then
+                    local argParts = {}
+                    for i, arg in ipairs(args) do
+                        local argType = typeof(arg)
+                        local argValue = tostring(arg)
+                        if argType == "table" then
+                            pcall(function()
+                                argValue = HttpService:JSONEncode(arg)
+                            end)
+                        end
+                        table.insert(argParts, string.format("[%d]=%s (%s)", i, argValue, argType))
                     end
-                    table.insert(argParts, string.format("[%d]=%s (%s)", i, argValue, argType))
+                    argsStr = table.concat(argParts, ", ")
                 end
-                argsStr = table.concat(argParts, ", ")
+
+                addLog("RemoteSpy", string.format("%s | FireServer | Args: %s", remoteName, argsStr))
+
+                if captureActive then
+                    table.insert(capturedRemotes, {
+                        name = remoteName,
+                        method = "FireServer",
+                        args = args,
+                        timestamp = os.date("%H:%M:%S")
+                    })
+                end
             end
 
-            addLog("RemoteSpy", string.format("%s | %s | Args: %s", remoteName, method, argsStr))
+            return oldFireServer(self, ...)
+        end)
 
-            if captureActive then
-                table.insert(capturedRemotes, {
-                    name = remoteName,
-                    method = method,
-                    args = args,
-                    timestamp = os.date("%H:%M:%S")
-                })
-            end
-        end
+        remoteHookInstalled = true
+        addLog("RemoteSpy", "Hook installed (hookfunction)")
+        return
+    end
 
-        return originalNamecall(self, ...)
-    end))
-
-    remoteHookInstalled = true
-    addLog("RemoteSpy", "Hook installed")
+    addLog("RemoteSpy", "ERROR: Exploit does not support hookmetamethod or hookfunction")
 end
 
 local function createWatermark()
