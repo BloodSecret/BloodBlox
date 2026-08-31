@@ -1128,6 +1128,23 @@ createButton(analyzerTab, "Scan Rebirth Objects", function()
         addLog("Analyzer", "Enable Remote Spy and rebirth manually to capture the Remote")
     end
 end)
+createButton(analyzerTab, "Test Remote Spy Hook", function()
+    addLog("Analyzer", "Testing Remote Spy hook with fake RemoteEvent...")
+
+    local testRemote = Instance.new("RemoteEvent")
+    testRemote.Name = "TestRemoteEvent"
+    testRemote.Parent = ReplicatedStorage
+
+    pcall(function()
+        testRemote:FireServer("test_arg1", 123, true, {key = "value"})
+    end)
+
+    task.wait(0.5)
+    addLog("Analyzer", "Test RemoteEvent fired - check logs for [RemoteSpy] entry")
+    addLog("Analyzer", "If NO [RemoteSpy] entry appeared - hookfunction is blocked by anti-cheat")
+
+    testRemote:Destroy()
+end)
 createButton(analyzerTab, "Scan Tools", function()
     addLog("Analyzer", "Scanning player tools...")
     local count = 0
