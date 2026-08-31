@@ -1050,6 +1050,34 @@ createButton(analyzerTab, "Stop Monitoring", function()
         addLog("Analyzer", "No monitoring active")
     end
 end)
+createButton(analyzerTab, "Scan Rebirth Objects", function()
+    addLog("Analyzer", "Scanning Workspace for rebirth objects...")
+    local clickCount = 0
+    local promptCount = 0
+
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("ClickDetector") then
+            local parent = obj.Parent
+            if parent and (string.find(parent.Name:lower(), "rebirth") or string.find(parent.Name:lower(), "prestige") or string.find(parent.Name:lower(), "reset")) then
+                addLog("Analyzer", "ClickDetector found: " .. parent:GetFullName())
+                clickCount = clickCount + 1
+            end
+        elseif obj:IsA("ProximityPrompt") then
+            local parent = obj.Parent
+            if parent and (string.find(parent.Name:lower(), "rebirth") or string.find(parent.Name:lower(), "prestige") or string.find(parent.Name:lower(), "reset")) then
+                addLog("Analyzer", "ProximityPrompt found: " .. parent:GetFullName())
+                promptCount = promptCount + 1
+            end
+        end
+    end
+
+    addLog("Analyzer", string.format("Total: %d ClickDetectors, %d ProximityPrompts", clickCount, promptCount))
+
+    if clickCount == 0 and promptCount == 0 then
+        addLog("Analyzer", "WARNING: No rebirth objects found - game likely uses RemoteEvent")
+        addLog("Analyzer", "Enable Remote Spy and rebirth manually to capture the Remote")
+    end
+end)
 createButton(analyzerTab, "Scan Tools", function()
     addLog("Analyzer", "Scanning player tools...")
     local count = 0
@@ -1572,6 +1600,12 @@ connections.fastWeight = RunService.Heartbeat:Connect(function()
     local weightTool = character and character:FindFirstChild("Weight")
     if weightTool and weightTool:IsA("Tool") then
         weightTool:Activate()
+
+        if humanoid and humanoid:FindFirstChildOfClass("Animator") then
+            for _, track in pairs(humanoid:FindFirstChildOfClass("Animator"):GetPlayingAnimationTracks()) do
+                track:AdjustSpeed(10)
+            end
+        end
     end
 
     lastFastWeightFire = tick()
