@@ -511,7 +511,7 @@ local function createWatermark()
     title.Size = UDim2.new(1, 0, 0.5, 0)
     title.Position = UDim2.new(0, 0, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "BloodyBlox Beta 0.0.1"
+    title.Text = "BloodyBlox Beta 0.0.2"
     title.TextColor3 = Color3.fromRGB(255, 50, 50)
     title.TextSize = 16
     title.Font = Enum.Font.GothamBold
@@ -606,7 +606,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(0.5, 0, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BloodyBlox Beta 0.0.1 | Muscle Legends"
+title.Text = "BloodyBlox Beta 0.0.2 | Muscle Legends"
 title.TextColor3 = Color3.fromRGB(255, 50, 50)
 title.TextSize = 18
 title.Font = Enum.Font.GothamBold
@@ -1660,32 +1660,19 @@ connections.killAura = RunService.Heartbeat:Connect(function()
     end
 end)
 
-connections.fastWeightActivate = RunService.Heartbeat:Connect(function()
+connections.fastWeight = RunService.Heartbeat:Connect(function()
     if not settings.fastWeight then return end
-    if tick() - lastFastWeightFire < 0.05 then return end
+    if tick() - lastFastWeightFire < 0.01 then return end
 
     local weightTool = character and character:FindFirstChild("Weight")
     if weightTool and weightTool:IsA("Tool") then
-        weightTool:Activate()
+        local vim = game:GetService("VirtualInputManager")
+        vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        task.wait(0.001)
+        vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end
 
     lastFastWeightFire = tick()
-end)
-
-connections.fastWeightSpeed = RunService.RenderStepped:Connect(function()
-    if not settings.fastWeight then return end
-
-    if humanoid and humanoid:FindFirstChildOfClass("Animator") then
-        for _, track in pairs(humanoid:FindFirstChildOfClass("Animator"):GetPlayingAnimationTracks()) do
-            if track.Animation and string.find(track.Animation.Name:lower(), "weight") then
-                track:AdjustSpeed(10)
-            elseif track.Animation and string.find(track.Animation.Name:lower(), "lift") then
-                track:AdjustSpeed(10)
-            elseif not track.Animation then
-                track:AdjustSpeed(10)
-            end
-        end
-    end
 end)
 
 connections.autoWeight = RunService.Heartbeat:Connect(function()
@@ -1748,26 +1735,30 @@ connections.autoRebirth = RunService.Heartbeat:Connect(function()
     if not settings.autoRebirth then return end
     if tick() - lastAutoRebirthFire < 5 then return end
 
-    for _, clickDetector in pairs(Workspace:GetDescendants()) do
-        if clickDetector:IsA("ClickDetector") then
-            local parent = clickDetector.Parent
-            if parent and (string.find(parent.Name:lower(), "rebirth") or string.find(parent.Name:lower(), "prestige")) then
-                fireclickdetector(clickDetector)
-                addLog("AutoRebirth", "Fired ClickDetector: " .. parent.Name)
-                lastAutoRebirthFire = tick()
-                return
-            end
-        end
-    end
+    local playerGui = player:WaitForChild("PlayerGui")
 
-    for _, proximityPrompt in pairs(Workspace:GetDescendants()) do
-        if proximityPrompt:IsA("ProximityPrompt") then
-            local parent = proximityPrompt.Parent
-            if parent and (string.find(parent.Name:lower(), "rebirth") or string.find(parent.Name:lower(), "prestige")) then
-                fireproximityprompt(proximityPrompt)
-                addLog("AutoRebirth", "Fired ProximityPrompt: " .. parent.Name)
-                lastAutoRebirthFire = tick()
-                return
+    for _, gui in pairs(playerGui:GetDescendants()) do
+        if gui:IsA("TextButton") or gui:IsA("TextLabel") then
+            local text = gui.Text:lower()
+            if string.find(text, "rebirth") or string.find(text, "prestige") or string.find(text, "reset") then
+                if gui:IsA("TextButton") and gui.Visible and gui.Parent.Visible then
+                    for _, connection in pairs(getconnections(gui.MouseButton1Click)) do
+                        connection:Fire()
+                    end
+                    addLog("AutoRebirth", "Clicked GUI button: " .. gui.Text)
+                    lastAutoRebirthFire = tick()
+                    return
+                elseif gui:IsA("TextLabel") and gui.Parent:IsA("TextButton") then
+                    local button = gui.Parent
+                    if button.Visible and button.Parent.Visible then
+                        for _, connection in pairs(getconnections(button.MouseButton1Click)) do
+                            connection:Fire()
+                        end
+                        addLog("AutoRebirth", "Clicked GUI button: " .. gui.Text)
+                        lastAutoRebirthFire = tick()
+                        return
+                    end
+                end
             end
         end
     end
@@ -1889,6 +1880,6 @@ setfpscap(999)
 loadTeleportPoints()
 createWatermark()
 
-addLog("System", "BloodyBlox Beta 0.0.1 loaded")
+addLog("System", "BloodyBlox Beta 0.0.2 loaded")
 addLog("System", "Press INSERT to toggle menu")
 addLog("System", "Tool.Activated hook method - test with Monitor Weight Tool button")
