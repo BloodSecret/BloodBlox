@@ -1756,23 +1756,57 @@ connections.killAura = RunService.Heartbeat:Connect(function()
 end)
 
 connections.fastWeight = RunService.Heartbeat:Connect(function()
-    if not settings.fastWeight then return end
-    if tick() - lastFastWeightFire < 0.01 then return end
+    if not settings.fastWeight then
+        return
+    end
 
-    local weightTool = character and character:FindFirstChild("Weight")
+    addLog("FastWeight", "Loop running - setting is ON")
+
+    if tick() - lastFastWeightFire < 0.01 then
+        return
+    end
+
+    addLog("FastWeight", "Cooldown passed")
+
+    if not character then
+        addLog("FastWeight", "ERROR: character is nil")
+        return
+    end
+
+    local weightTool = character:FindFirstChild("Weight")
+
+    if not weightTool then
+        addLog("FastWeight", "ERROR: Weight tool not found in Character")
+
+        local backpackWeight = player.Backpack:FindFirstChild("Weight")
+        if backpackWeight then
+            addLog("FastWeight", "Weight found in Backpack - equipping")
+            humanoid:EquipTool(backpackWeight)
+            task.wait(0.1)
+            weightTool = character:FindFirstChild("Weight")
+        else
+            addLog("FastWeight", "ERROR: Weight not in Backpack either")
+            return
+        end
+    end
+
     if weightTool and weightTool:IsA("Tool") then
+        addLog("FastWeight", "Weight tool found - trying click methods")
+
         if mouse1click then
             mouse1click()
-            addLog("FastWeight", "Mouse1Click fired")
+            addLog("FastWeight", "mouse1click() executed")
         elseif mouse1press then
             mouse1press()
             task.wait(0.001)
             mouse1release()
-            addLog("FastWeight", "Mouse1Press/Release fired")
+            addLog("FastWeight", "mouse1press/release executed")
         else
             weightTool:Activate()
-            addLog("FastWeight", "Tool:Activate() fallback")
+            addLog("FastWeight", "Tool:Activate() fallback executed")
         end
+    else
+        addLog("FastWeight", "ERROR: weightTool exists but is not a Tool")
     end
 
     lastFastWeightFire = tick()
@@ -1835,32 +1869,54 @@ connections.autoDurability = RunService.Heartbeat:Connect(function()
 end)
 
 connections.autoRebirth = RunService.Heartbeat:Connect(function()
-    if not settings.autoRebirth then return end
-    if tick() - lastAutoRebirthFire < 5 then return end
+    if not settings.autoRebirth then
+        return
+    end
+
+    addLog("AutoRebirth", "Loop running - setting is ON")
+
+    if tick() - lastAutoRebirthFire < 5 then
+        return
+    end
+
+    addLog("AutoRebirth", "Cooldown passed (5s) - scanning PlayerGui")
 
     local playerGui = player:WaitForChild("PlayerGui")
+    local buttonsFound = 0
+    local buttonsFired = 0
 
     for _, gui in pairs(playerGui:GetDescendants()) do
         if gui:IsA("TextButton") or gui:IsA("ImageButton") then
+            buttonsFound = buttonsFound + 1
+
             local text = gui.Text and gui.Text:lower() or ""
             local name = gui.Name:lower()
 
             if string.find(text, "rebirth") or string.find(text, "prestige") or string.find(name, "rebirth") or string.find(name, "prestige") then
+                addLog("AutoRebirth", "Found potential button: " .. gui.Name .. " | Text: " .. (gui.Text or "NONE"))
+
                 if gui.Visible and gui.Parent and gui.Parent.Visible then
+                    addLog("AutoRebirth", "Button is visible - attempting to fire")
+
                     if firesignal then
                         firesignal(gui.MouseButton1Click)
-                        addLog("AutoRebirth", "Fired signal on: " .. (gui.Text or gui.Name))
+                        addLog("AutoRebirth", "firesignal() executed on: " .. gui.Name)
                     else
                         gui.MouseButton1Click:Fire()
-                        addLog("AutoRebirth", "Fired event on: " .. (gui.Text or gui.Name))
+                        addLog("AutoRebirth", "MouseButton1Click:Fire() executed on: " .. gui.Name)
                     end
+
+                    buttonsFired = buttonsFired + 1
                     lastAutoRebirthFire = tick()
                     return
+                else
+                    addLog("AutoRebirth", "Button exists but NOT visible - skipping")
                 end
             end
         end
     end
 
+    addLog("AutoRebirth", "Scan complete - Total buttons: " .. buttonsFound .. " | Fired: " .. buttonsFired)
     lastAutoRebirthFire = tick()
 end)
 
