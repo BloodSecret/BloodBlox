@@ -1,17 +1,14 @@
 --[[
-    BloodyBlox v0.5.4
+    BloodyBlox v0.5.6
     Muscle Legends helper / analyzer
 
-    v0.5.4 changes (2026-08-31):
-    - FastHits throttle added (0.05s cooldown, fixed lag)
-    - Watermark draggable with MoveWatermark toggle
-    - Watermark position fixed (above chat, right side, persists after close)
-    - Menu scale changed to textbox input (removed slider)
-    - WalkWithDumbbell speed fixed (25 instead of 16)
-    - FastStrafe fixed (removes inertia via AssemblyLinearVelocity)
-    - AntiRagdoll added (prevents falling when hit)
-    - Teleport/Config UI rebuilt (inline Delete/Overwrite buttons)
-    - All Combat logging removed (Kill Aura + Fast Hits silent)
+    v0.5.6 changes (2026-08-31):
+    - Watermark persist fixed (separate ScreenGui in CoreGui)
+    - InfiniteJump fixed (InputBegan Space instead of JumpRequest)
+    - Teleport Delete buttons added (inline UI)
+    - AntiAim extended (10 modes: Static/Jitter/Spin/Random/Desync/FakeYaw/FakeLag/Freestanding/ManualAA/EdgeAA)
+    - AntiAim speed setting added (1-10)
+    - Right-click context menu system (settings for each function)
 
     Core architecture:
     - No loadstring() call is used inside this file.
@@ -91,7 +88,7 @@ local function getGlobal(name)
 end
 
 local BloodyBlox = {
-    Version = "0.5.4",
+    Version = "0.5.6",
     MenuOpen = true,
     Player = LocalPlayer,
     Connections = {},
@@ -124,11 +121,14 @@ local BloodyBlox = {
         BadAuraFarm = false,
         BadAuraInterval = 0.1,
         AntiAim = false,
+        AntiAimMode = "Spin",
+        AntiAimSpeed = 5,
         KillAura = false,
         KillAuraRadius = 20,
         FastHits = false,
         WalkWithDumbbell = false,
         FastStrafe = false,
+        AirStrafe = false,
         AntiRagdoll = false,
         ShowWatermark = true,
         WatermarkDraggable = false,
@@ -763,10 +763,45 @@ function Combat:ToggleAntiAim(enabled)
         return
     end
 
+    local mode = BloodyBlox.Settings.AntiAimMode or "Spin"
+    local speed = BloodyBlox.Settings.AntiAimSpeed or 5
+    local angle = 0
+    local jitterState = false
+    local desyncOffset = 0
+
     self.AntiAimConnection = RunService.RenderStepped:Connect(function()
         local root = BloodyBlox:GetHRP()
-        if root then
-            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(30), 0)
+        if not root then return end
+
+        if mode == "Static" then
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(180), 0)
+        elseif mode == "Jitter" then
+            jitterState = not jitterState
+            angle = jitterState and 90 or -90
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(angle * speed / 5), 0)
+        elseif mode == "Spin" then
+            angle = (angle + (speed * 3)) % 360
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(speed * 3), 0)
+        elseif mode == "Random" then
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.random(-180, 180)), 0)
+        elseif mode == "Desync" then
+            desyncOffset = desyncOffset + (speed * 5)
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.sin(desyncOffset) * 180), 0)
+        elseif mode == "FakeYaw" then
+            local offset = math.sin(tick() * speed) * 90
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(offset), 0)
+        elseif mode == "FakeLag" then
+            if tick() % (1 / speed) < 0.1 then
+                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.random(-45, 45)), 0)
+            end
+        elseif mode == "Freestanding" then
+            angle = (angle + speed) % 360
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(speed), 0)
+        elseif mode == "ManualAA" then
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(45 * speed / 5), 0)
+        elseif mode == "EdgeAA" then
+            local offset = math.cos(tick() * speed) * 60
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(offset), 0)
         end
     end)
     BloodyBlox:AddConnection(self.AntiAimConnection)
@@ -784,7 +819,12 @@ function Combat:ToggleKillAura(enabled)
         return
     end
 
+    local lastHit = 0
     self.KillAuraConnection = RunService.Heartbeat:Connect(function()
+        local now = os.clock()
+        if now - lastHit < 0.1 then return end
+        lastHit = now
+
         pcall(function()
             local myRoot = BloodyBlox:GetHRP()
             if not myRoot then return end
@@ -806,16 +846,19 @@ function Combat:ToggleKillAura(enabled)
                                 mouse1release()
                             end
 
+                            local sentRemote = false
                             for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
-                                if remote:IsA("RemoteEvent") then
+                                if not sentRemote and remote:IsA("RemoteEvent") then
                                     local remoteName = remote.Name:lower()
                                     if remoteName:find("punch") or remoteName:find("attack") or remoteName:find("hit") or remoteName:find("damage") then
                                         pcall(function()
                                             remote:FireServer(player)
+                                            sentRemote = true
                                         end)
                                     end
                                 end
                             end
+                            break
                         end
                     end
                 end
@@ -840,7 +883,7 @@ function Combat:ToggleFastHits(enabled)
     local lastHit = 0
     self.FastHitsConnection = RunService.Heartbeat:Connect(function()
         local now = os.clock()
-        if now - lastHit < 0.05 then return end
+        if now - lastHit < 0.1 then return end
         lastHit = now
 
         pcall(function()
@@ -881,12 +924,14 @@ function Combat:ToggleFastHits(enabled)
                 mouse1release()
             end
 
+            local sentRemote = false
             for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
-                if remote:IsA("RemoteEvent") then
+                if not sentRemote and remote:IsA("RemoteEvent") then
                     local remoteName = remote.Name:lower()
                     if remoteName:find("punch") or remoteName:find("attack") or remoteName:find("hit") or remoteName:find("damage") then
                         pcall(function()
                             remote:FireServer(closest)
+                            sentRemote = true
                         end)
                     end
                 end
@@ -921,7 +966,7 @@ function Misc:ToggleWalkWithDumbbell(enabled)
     self.WalkWithDumbbellConnection = RunService.Heartbeat:Connect(function()
         local humanoid = BloodyBlox:GetHumanoid()
         if humanoid then
-            humanoid.WalkSpeed = 25
+            humanoid.WalkSpeed = 35
         end
     end)
     BloodyBlox:AddConnection(self.WalkWithDumbbellConnection)
@@ -942,10 +987,56 @@ function Misc:ToggleFastStrafe(enabled)
     self.FastStrafeConnection = RunService.Heartbeat:Connect(function()
         local root = BloodyBlox:GetHRP()
         if root then
-            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X * 0.5, root.AssemblyLinearVelocity.Y, root.AssemblyLinearVelocity.Z * 0.5)
+            local velocity = root.AssemblyLinearVelocity
+            root.AssemblyLinearVelocity = Vector3.new(velocity.X * 0.95, velocity.Y, velocity.Z * 0.95)
         end
     end)
     BloodyBlox:AddConnection(self.FastStrafeConnection)
+end
+
+function Misc:ToggleAirStrafe(enabled)
+    BloodyBlox.Settings.AirStrafe = enabled
+
+    if self.AirStrafeConnection then
+        safeDisconnect(self.AirStrafeConnection)
+        self.AirStrafeConnection = nil
+    end
+
+    if not enabled then
+        return
+    end
+
+    self.AirStrafeConnection = RunService.Heartbeat:Connect(function()
+        local root = BloodyBlox:GetHRP()
+        local humanoid = BloodyBlox:GetHumanoid()
+        local camera = Workspace.CurrentCamera
+
+        if root and humanoid and camera and humanoid:GetState() == Enum.HumanoidStateType.Freefall then
+            local direction = Vector3.zero
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                direction += camera.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                direction -= camera.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                direction -= camera.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                direction += camera.CFrame.RightVector
+            end
+
+            if direction.Magnitude > 0 then
+                local velocity = root.AssemblyLinearVelocity
+                root.AssemblyLinearVelocity = Vector3.new(
+                    direction.X * 25,
+                    velocity.Y,
+                    direction.Z * 25
+                )
+            end
+        end
+    end)
+    BloodyBlox:AddConnection(self.AirStrafeConnection)
 end
 
 function Misc:ToggleAntiRagdoll(enabled)
@@ -964,6 +1055,7 @@ function Misc:ToggleAntiRagdoll(enabled)
         local humanoid = BloodyBlox:GetHumanoid()
         if humanoid then
             humanoid.PlatformStand = false
+            humanoid.Sit = false
         end
     end)
     BloodyBlox:AddConnection(self.AntiRagdollConnection)
@@ -1271,6 +1363,31 @@ end
 
 function PlayerTools:ToggleInfiniteJump(enabled)
     BloodyBlox.Settings.InfiniteJump = enabled
+
+    if self.InfiniteJumpConnection then
+        safeDisconnect(self.InfiniteJumpConnection)
+        self.InfiniteJumpConnection = nil
+    end
+
+    if not enabled then
+        return
+    end
+
+    self.InfiniteJumpConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.KeyCode == Enum.KeyCode.Space then
+            local humanoid = BloodyBlox:GetHumanoid()
+            if humanoid then
+                local state = humanoid:GetState()
+                if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                elseif state == Enum.HumanoidStateType.Freefall then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end
+        end
+    end)
+    BloodyBlox:AddConnection(self.InfiniteJumpConnection)
 end
 
 function PlayerTools:ToggleGodMode(enabled)
@@ -1596,6 +1713,215 @@ function UI:UpdateScale(scale)
     end
 end
 
+function UI:CreateWatermark()
+    local coreGui = game:GetService("CoreGui")
+
+    self.WatermarkGui = create("ScreenGui", {
+        Name = "BloodyBloxWatermark_" .. HttpService:GenerateGUID(false),
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        IgnoreGuiInset = true,
+        DisplayOrder = 999,
+    }, coreGui)
+
+    self.Watermark = create("Frame", {
+        Size = UDim2.fromOffset(200, 60),
+        Position = UDim2.new(1, -210, 1, -230),
+        BackgroundColor3 = Color3.fromRGB(10, 10, 15),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Active = false,
+        Draggable = false,
+    }, self.WatermarkGui)
+    create("UICorner", {CornerRadius = UDim.new(0, 8)}, self.Watermark)
+
+    local watermarkLabel = create("TextLabel", {
+        Size = UDim2.new(1, -16, 1, -10),
+        Position = UDim2.fromOffset(8, 5),
+        BackgroundTransparency = 1,
+        Text = "BloodyBlox v" .. BloodyBlox.Version .. "\nFPS: 0",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+    }, self.Watermark)
+
+    self.Watermark.Visible = BloodyBlox.Settings.ShowWatermark
+    BloodyBlox.State.WatermarkLabel = watermarkLabel
+
+    -- FPS counter update loop
+    task.spawn(function()
+        local lastUpdate = 0
+        while self.WatermarkGui and self.WatermarkGui.Parent do
+            local now = os.clock()
+            if now - lastUpdate >= 0.5 then
+                local fps = math.floor(1 / RunService.RenderStepped:Wait())
+                if watermarkLabel and watermarkLabel.Parent then
+                    watermarkLabel.Text = "BloodyBlox v" .. BloodyBlox.Version .. "\nFPS: " .. fps
+                end
+                lastUpdate = now
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+function UI:CreateContextMenu(parentFrame, functionName, settings)
+    if self.ContextMenu then
+        safeDestroy(self.ContextMenu)
+        self.ContextMenu = nil
+    end
+
+    local menu = create("Frame", {
+        Size = UDim2.fromOffset(250, 200),
+        Position = UDim2.new(0.5, -125, 0.5, -100),
+        BackgroundColor3 = Color3.fromRGB(20, 20, 25),
+        BackgroundTransparency = 0.05,
+        BorderSizePixel = 0,
+        ZIndex = 100,
+    }, self.Gui)
+    create("UICorner", {CornerRadius = UDim.new(0, 8)}, menu)
+    create("UIStroke", {
+        Color = Color3.fromRGB(139, 0, 0),
+        Thickness = 2,
+    }, menu)
+
+    local title = create("TextLabel", {
+        Size = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(10, 5),
+        BackgroundTransparency = 1,
+        Text = functionName .. " Settings",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, menu)
+
+    local closeBtn = create("TextButton", {
+        Size = UDim2.fromOffset(25, 25),
+        Position = UDim2.new(1, -30, 0, 5),
+        BackgroundColor3 = Color3.fromRGB(139, 0, 0),
+        BorderSizePixel = 0,
+        Text = "X",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+    }, menu)
+    create("UICorner", {CornerRadius = UDim.new(0, 4)}, closeBtn)
+    closeBtn.MouseButton1Click:Connect(function()
+        safeDestroy(menu)
+        self.ContextMenu = nil
+    end)
+
+    local container = create("ScrollingFrame", {
+        Size = UDim2.new(1, -20, 1, -45),
+        Position = UDim2.fromOffset(10, 40),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 4,
+        CanvasSize = UDim2.new(),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    }, menu)
+    create("UIListLayout", {
+        Padding = UDim.new(0, 8),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }, container)
+
+    for _, setting in ipairs(settings) do
+        if setting.type == "slider" then
+            local label = create("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 20),
+                BackgroundTransparency = 1,
+                Text = setting.name .. ": " .. tostring(setting.value),
+                TextColor3 = Color3.fromRGB(220, 220, 220),
+                Font = Enum.Font.Gotham,
+                TextSize = 11,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, container)
+
+            local sliderFrame = create("Frame", {
+                Size = UDim2.new(1, 0, 0, 30),
+                BackgroundColor3 = Color3.fromRGB(35, 35, 42),
+                BorderSizePixel = 0,
+            }, container)
+            create("UICorner", {CornerRadius = UDim.new(0, 5)}, sliderFrame)
+
+            local sliderBtn = create("TextButton", {
+                Size = UDim2.fromOffset(20, 20),
+                Position = UDim2.new((setting.value - setting.min) / (setting.max - setting.min), -10, 0.5, -10),
+                BackgroundColor3 = Color3.fromRGB(139, 0, 0),
+                BorderSizePixel = 0,
+                Text = "",
+            }, sliderFrame)
+            create("UICorner", {CornerRadius = UDim.new(1, 0)}, sliderBtn)
+
+            local dragging = false
+            sliderBtn.MouseButton1Down:Connect(function()
+                dragging = true
+            end)
+            UserInputService.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragging = false
+                end
+            end)
+            RunService.RenderStepped:Connect(function()
+                if dragging then
+                    local mousePos = UserInputService:GetMouseLocation().X
+                    local framePos = sliderFrame.AbsolutePosition.X
+                    local frameSize = sliderFrame.AbsoluteSize.X
+                    local relative = math.clamp((mousePos - framePos) / frameSize, 0, 1)
+                    local value = math.floor(setting.min + relative * (setting.max - setting.min))
+                    sliderBtn.Position = UDim2.new(relative, -10, 0.5, -10)
+                    label.Text = setting.name .. ": " .. value
+                    if setting.callback then
+                        setting.callback(value)
+                    end
+                end
+            end)
+        elseif setting.type == "dropdown" then
+            local label = create("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 20),
+                BackgroundTransparency = 1,
+                Text = setting.name .. ":",
+                TextColor3 = Color3.fromRGB(220, 220, 220),
+                Font = Enum.Font.Gotham,
+                TextSize = 11,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, container)
+
+            for _, option in ipairs(setting.options) do
+                local btn = create("TextButton", {
+                    Size = UDim2.new(1, 0, 0, 28),
+                    BackgroundColor3 = (setting.value == option) and Color3.fromRGB(139, 0, 0) or Color3.fromRGB(35, 35, 42),
+                    BorderSizePixel = 0,
+                    Text = option,
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    Font = Enum.Font.Gotham,
+                    TextSize = 11,
+                }, container)
+                create("UICorner", {CornerRadius = UDim.new(0, 5)}, btn)
+                btn.MouseButton1Click:Connect(function()
+                    for _, child in ipairs(container:GetChildren()) do
+                        if child:IsA("TextButton") and child.Text ~= "X" then
+                            child.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+                        end
+                    end
+                    btn.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+                    if setting.callback then
+                        setting.callback(option)
+                    end
+                end)
+            end
+        end
+    end
+
+    menu.Active = true
+    menu.Draggable = true
+    self.ContextMenu = menu
+    return menu
+end
+
 function UI:Create()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -1678,32 +2004,6 @@ function UI:Create()
     }, self.Main)
     create("UICorner", {CornerRadius = UDim.new(0, 8)}, self.Content)
 
-    -- Watermark
-    self.Watermark = create("Frame", {
-        Size = UDim2.fromOffset(200, 60),
-        Position = UDim2.new(1, -210, 1, -230),
-        BackgroundColor3 = Color3.fromRGB(10, 10, 15),
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Active = false,
-        Draggable = false,
-    }, self.Gui)
-    create("UICorner", {CornerRadius = UDim.new(0, 8)}, self.Watermark)
-
-    local watermarkLabel = create("TextLabel", {
-        Size = UDim2.new(1, -16, 1, -10),
-        Position = UDim2.fromOffset(8, 5),
-        BackgroundTransparency = 1,
-        Text = "BloodyBlox v" .. BloodyBlox.Version .. "\nFPS: 0",
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Top,
-    }, self.Watermark)
-
-    self.Watermark.Visible = BloodyBlox.Settings.ShowWatermark
-    BloodyBlox.State.WatermarkLabel = watermarkLabel
     BloodyBlox.State.UI = self
 
     -- FPS counter
@@ -2044,6 +2344,7 @@ end
 --============================================================
 
 UI:Create()
+UI:CreateWatermark()
 Teleport:Load()
 Analyzer:LoadProfiles()
 Analyzer:InstallHook()
@@ -2120,10 +2421,48 @@ UI:AddNumberBox(FarmTab, "Bad Aura interval", 0.1, function(value)
 end)
 
 local CombatTab = UI:AddTab("Combat")
-UI:AddToggle(CombatTab, "Anti-Aim", false, function(state)
+local antiAimToggle = UI:AddToggle(CombatTab, "Anti-Aim", false, function(state)
     Combat:ToggleAntiAim(state)
     BloodyBlox:SaveConfig()
 end)
+
+-- Right-click context menu for Anti-Aim
+antiAimToggle.Parent.MouseButton2Click:Connect(function()
+    UI:CreateContextMenu(antiAimToggle, "Anti-Aim", {
+        {
+            type = "slider",
+            name = "Speed",
+            min = 1,
+            max = 10,
+            value = BloodyBlox.Settings.AntiAimSpeed,
+            callback = function(value)
+                BloodyBlox.Settings.AntiAimSpeed = value
+                if BloodyBlox.Settings.AntiAim then
+                    Combat:ToggleAntiAim(false)
+                    task.wait(0.05)
+                    Combat:ToggleAntiAim(true)
+                end
+                BloodyBlox:SaveConfig()
+            end
+        },
+        {
+            type = "dropdown",
+            name = "Type",
+            value = BloodyBlox.Settings.AntiAimMode,
+            options = {"Static", "Jitter", "Spin", "Random", "Desync", "FakeYaw", "FakeLag", "Freestanding", "ManualAA", "EdgeAA"},
+            callback = function(mode)
+                BloodyBlox.Settings.AntiAimMode = mode
+                if BloodyBlox.Settings.AntiAim then
+                    Combat:ToggleAntiAim(false)
+                    task.wait(0.05)
+                    Combat:ToggleAntiAim(true)
+                end
+                BloodyBlox:SaveConfig()
+            end
+        }
+    })
+end)
+
 UI:AddToggle(CombatTab, "Kill Aura", false, function(state)
     Combat:ToggleKillAura(state)
     BloodyBlox:SaveConfig()
@@ -2196,6 +2535,10 @@ UI:AddToggle(MiscTab, "Walk With Dumbbell", false, function(state)
 end)
 UI:AddToggle(MiscTab, "Fast Strafe", false, function(state)
     Misc:ToggleFastStrafe(state)
+    BloodyBlox:SaveConfig()
+end)
+UI:AddToggle(MiscTab, "Air Strafe", false, function(state)
+    Misc:ToggleAirStrafe(state)
     BloodyBlox:SaveConfig()
 end)
 UI:AddToggle(MiscTab, "Anti Ragdoll", false, function(state)
@@ -2273,8 +2616,54 @@ UI:AddButton(TeleportTab, "Rebuild Saved Points", function()
 end)
 
 for index, point in ipairs(BloodyBlox.TeleportPoints) do
-    UI:AddButton(TeleportTab, "TP: " .. tostring(point.name or ("Point_" .. index)), function()
+    local frame = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 35),
+        BackgroundColor3 = Color3.fromRGB(35, 35, 42),
+        BorderSizePixel = 0,
+    }, TeleportTab.Page)
+    create("UICorner", {CornerRadius = UDim.new(0, 6)}, frame)
+
+    local nameLabel = create("TextLabel", {
+        Size = UDim2.new(1, -150, 1, 0),
+        Position = UDim2.fromOffset(10, 0),
+        BackgroundTransparency = 1,
+        Text = tostring(point.name or ("Point_" .. index)),
+        TextColor3 = Color3.fromRGB(225, 225, 225),
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, frame)
+
+    local tpBtn = create("TextButton", {
+        Size = UDim2.fromOffset(55, 25),
+        Position = UDim2.new(1, -125, 0.5, -12),
+        BackgroundColor3 = Color3.fromRGB(0, 139, 0),
+        BorderSizePixel = 0,
+        Text = "TP",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+    }, frame)
+    create("UICorner", {CornerRadius = UDim.new(0, 5)}, tpBtn)
+    tpBtn.MouseButton1Click:Connect(function()
         Teleport:Go(point)
+    end)
+
+    local deleteBtn = create("TextButton", {
+        Size = UDim2.fromOffset(60, 25),
+        Position = UDim2.new(1, -60, 0.5, -12),
+        BackgroundColor3 = Color3.fromRGB(139, 0, 0),
+        BorderSizePixel = 0,
+        Text = "Delete",
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.GothamBold,
+        TextSize = 10,
+    }, frame)
+    create("UICorner", {CornerRadius = UDim.new(0, 5)}, deleteBtn)
+    deleteBtn.MouseButton1Click:Connect(function()
+        Teleport:Delete(point.name or ("Point_" .. index))
+        safeDestroy(frame)
+        BloodyBlox:Log("Teleport", "Deleted: " .. (point.name or ("Point_" .. index)), "info")
     end)
 end
 
