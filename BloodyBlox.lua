@@ -511,7 +511,7 @@ local function createWatermark()
     title.Size = UDim2.new(1, 0, 0.5, 0)
     title.Position = UDim2.new(0, 0, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "BloodyBlox Beta 0.0.2"
+    title.Text = "BloodyBlox Beta 0.0.3"
     title.TextColor3 = Color3.fromRGB(255, 50, 50)
     title.TextSize = 16
     title.Font = Enum.Font.GothamBold
@@ -606,7 +606,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(0.5, 0, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BloodyBlox Beta 0.0.2 | Muscle Legends"
+title.Text = "BloodyBlox Beta 0.0.3 | Muscle Legends"
 title.TextColor3 = Color3.fromRGB(255, 50, 50)
 title.TextSize = 18
 title.Font = Enum.Font.GothamBold
@@ -1225,6 +1225,101 @@ createToggle(miscTab, "Anti Ragdoll", "antiRagdoll")
 createToggle(miscTab, "Air Strafe", "airStrafe")
 createSlider(miscTab, "Air Strafe Speed", "airStrafeSpeed", 10, 100)
 
+local playerListFrame = Instance.new("Frame")
+playerListFrame.Size = UDim2.new(1, -10, 0, 300)
+playerListFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+playerListFrame.BorderSizePixel = 0
+playerListFrame.Parent = miscTab
+
+local playerListCorner = Instance.new("UICorner")
+playerListCorner.CornerRadius = UDim.new(0, 6)
+playerListCorner.Parent = playerListFrame
+
+local playerListTitle = Instance.new("TextLabel")
+playerListTitle.Size = UDim2.new(1, 0, 0, 25)
+playerListTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+playerListTitle.BorderSizePixel = 0
+playerListTitle.Text = "Players on Server (Click to Kick)"
+playerListTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+playerListTitle.TextSize = 14
+playerListTitle.Font = Enum.Font.GothamBold
+playerListTitle.Parent = playerListFrame
+
+local playerListContainer = Instance.new("ScrollingFrame")
+playerListContainer.Size = UDim2.new(1, 0, 1, -25)
+playerListContainer.Position = UDim2.new(0, 0, 0, 25)
+playerListContainer.BackgroundTransparency = 1
+playerListContainer.BorderSizePixel = 0
+playerListContainer.ScrollBarThickness = 4
+playerListContainer.Parent = playerListFrame
+
+local playerListLayout = Instance.new("UIListLayout")
+playerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+playerListLayout.Padding = UDim.new(0, 2)
+playerListLayout.Parent = playerListContainer
+
+local function refreshPlayerList()
+    for _, child in pairs(playerListContainer:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+        if targetPlayer ~= player then
+            local playerFrame = Instance.new("Frame")
+            playerFrame.Size = UDim2.new(1, -10, 0, 30)
+            playerFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+            playerFrame.BorderSizePixel = 0
+            playerFrame.Parent = playerListContainer
+
+            local playerFrameCorner = Instance.new("UICorner")
+            playerFrameCorner.CornerRadius = UDim.new(0, 4)
+            playerFrameCorner.Parent = playerFrame
+
+            local playerName = Instance.new("TextLabel")
+            playerName.Size = UDim2.new(0.7, 0, 1, 0)
+            playerName.Position = UDim2.new(0, 5, 0, 0)
+            playerName.BackgroundTransparency = 1
+            playerName.Text = targetPlayer.Name
+            playerName.TextColor3 = Color3.fromRGB(255, 255, 255)
+            playerName.TextSize = 14
+            playerName.Font = Enum.Font.Gotham
+            playerName.TextXAlignment = Enum.TextXAlignment.Left
+            playerName.Parent = playerFrame
+
+            local kickButton = Instance.new("TextButton")
+            kickButton.Size = UDim2.new(0.25, 0, 0.8, 0)
+            kickButton.Position = UDim2.new(0.72, 0, 0.1, 0)
+            kickButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            kickButton.BorderSizePixel = 0
+            kickButton.Text = "KICK"
+            kickButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            kickButton.TextSize = 12
+            kickButton.Font = Enum.Font.GothamBold
+            kickButton.Parent = playerFrame
+
+            local kickCorner = Instance.new("UICorner")
+            kickCorner.CornerRadius = UDim.new(0, 4)
+            kickCorner.Parent = kickButton
+
+            kickButton.MouseButton1Click:Connect(function()
+                if targetPlayer and targetPlayer.Parent then
+                    targetPlayer:Kick("Kicked by BloodyBlox")
+                    addLog("PlayerKick", "Kicked: " .. targetPlayer.Name)
+                    task.wait(0.5)
+                    refreshPlayerList()
+                end
+            end)
+        end
+    end
+
+    playerListContainer.CanvasSize = UDim2.new(0, 0, 0, playerListLayout.AbsoluteContentSize.Y + 10)
+end
+
+createButton(miscTab, "Refresh Player List", refreshPlayerList)
+refreshPlayerList()
+
 local visualTab = createTab("Visual")
 createToggle(visualTab, "ESP", "espEnabled", function(enabled)
     if enabled then
@@ -1666,10 +1761,18 @@ connections.fastWeight = RunService.Heartbeat:Connect(function()
 
     local weightTool = character and character:FindFirstChild("Weight")
     if weightTool and weightTool:IsA("Tool") then
-        local vim = game:GetService("VirtualInputManager")
-        vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-        task.wait(0.001)
-        vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        if mouse1click then
+            mouse1click()
+            addLog("FastWeight", "Mouse1Click fired")
+        elseif mouse1press then
+            mouse1press()
+            task.wait(0.001)
+            mouse1release()
+            addLog("FastWeight", "Mouse1Press/Release fired")
+        else
+            weightTool:Activate()
+            addLog("FastWeight", "Tool:Activate() fallback")
+        end
     end
 
     lastFastWeightFire = tick()
@@ -1738,26 +1841,21 @@ connections.autoRebirth = RunService.Heartbeat:Connect(function()
     local playerGui = player:WaitForChild("PlayerGui")
 
     for _, gui in pairs(playerGui:GetDescendants()) do
-        if gui:IsA("TextButton") or gui:IsA("TextLabel") then
-            local text = gui.Text:lower()
-            if string.find(text, "rebirth") or string.find(text, "prestige") or string.find(text, "reset") then
-                if gui:IsA("TextButton") and gui.Visible and gui.Parent.Visible then
-                    for _, connection in pairs(getconnections(gui.MouseButton1Click)) do
-                        connection:Fire()
+        if gui:IsA("TextButton") or gui:IsA("ImageButton") then
+            local text = gui.Text and gui.Text:lower() or ""
+            local name = gui.Name:lower()
+
+            if string.find(text, "rebirth") or string.find(text, "prestige") or string.find(name, "rebirth") or string.find(name, "prestige") then
+                if gui.Visible and gui.Parent and gui.Parent.Visible then
+                    if firesignal then
+                        firesignal(gui.MouseButton1Click)
+                        addLog("AutoRebirth", "Fired signal on: " .. (gui.Text or gui.Name))
+                    else
+                        gui.MouseButton1Click:Fire()
+                        addLog("AutoRebirth", "Fired event on: " .. (gui.Text or gui.Name))
                     end
-                    addLog("AutoRebirth", "Clicked GUI button: " .. gui.Text)
                     lastAutoRebirthFire = tick()
                     return
-                elseif gui:IsA("TextLabel") and gui.Parent:IsA("TextButton") then
-                    local button = gui.Parent
-                    if button.Visible and button.Parent.Visible then
-                        for _, connection in pairs(getconnections(button.MouseButton1Click)) do
-                            connection:Fire()
-                        end
-                        addLog("AutoRebirth", "Clicked GUI button: " .. gui.Text)
-                        lastAutoRebirthFire = tick()
-                        return
-                    end
                 end
             end
         end
@@ -1880,6 +1978,6 @@ setfpscap(999)
 loadTeleportPoints()
 createWatermark()
 
-addLog("System", "BloodyBlox Beta 0.0.2 loaded")
+addLog("System", "BloodyBlox Beta 0.0.3 loaded")
 addLog("System", "Press INSERT to toggle menu")
 addLog("System", "Tool.Activated hook method - test with Monitor Weight Tool button")
