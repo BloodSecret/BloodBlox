@@ -1,4 +1,4 @@
--- BloodyBlox v0.5.9
+-- BloodyBlox v0.5.10
 
 repeat task.wait() until game:IsLoaded()
 repeat task.wait() until game.Players.LocalPlayer
@@ -92,6 +92,10 @@ local lastKillAuraFire = {}
 local lastBadAuraFire = 0
 local lastAutoWeightAction = 0
 local lastAutoDurabilityAction = 0
+local lastAutoRebirthFire = 0
+
+local weightToolActivatedConnection = nil
+local durabilityToolActivatedConnection = nil
 
 local goodAuraRanks = {
     "Ангел Защитник",
@@ -457,7 +461,7 @@ local function createWatermark()
     title.Size = UDim2.new(1, 0, 0.5, 0)
     title.Position = UDim2.new(0, 0, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "BloodyBlox v0.5.9"
+    title.Text = "BloodyBlox v0.5.10"
     title.TextColor3 = Color3.fromRGB(255, 50, 50)
     title.TextSize = 16
     title.Font = Enum.Font.GothamBold
@@ -552,7 +556,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(0.5, 0, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BloodyBlox v0.5.9 | Muscle Legends"
+title.Text = "BloodyBlox v0.5.10 | Muscle Legends"
 title.TextColor3 = Color3.fromRGB(255, 50, 50)
 title.TextSize = 18
 title.Font = Enum.Font.GothamBold
@@ -955,29 +959,11 @@ local function createTextBox(parent, text, settingKey, callback)
 end
 
 local farmTab = createTab("Farm")
-createToggle(farmTab, "Fast Weight", "fastWeight", function(enabled)
-    if enabled then
-        cacheRemotes({"weight", "lift", "train", "exercise"}, cachedWeightRemotes)
-    end
-end)
+createToggle(farmTab, "Fast Weight", "fastWeight")
 createToggle(farmTab, "Auto Weight", "autoWeight")
-createToggle(farmTab, "Durability Farm", "durabilityFarm", function(enabled)
-    if enabled then
-        cacheRemotes({"durability", "defense", "pushup", "situp", "handstand"}, cachedDurabilityRemotes)
-    end
-end)
+createToggle(farmTab, "Durability Farm", "durabilityFarm")
 createToggle(farmTab, "Auto Durability", "autoDurability")
-createToggle(farmTab, "Auto Rebirth", "autoRebirth", function(enabled)
-    if enabled then
-        cacheRemotes({"rebirth", "prestige", "reset"}, cachedRebirthRemotes)
-    end
-end)
-createToggle(farmTab, "Bad Aura Farm", "badAuraFarm", function(enabled)
-    if enabled then
-        cacheRemotes({"punch", "attack", "hit", "combat"}, cachedAttackRemotes)
-    end
-end)
-createSlider(farmTab, "Bad Aura Interval", "badAuraInterval", 1, 60)
+createToggle(farmTab, "Auto Rebirth", "autoRebirth")
 
 local combatTab = createTab("Combat")
 createToggle(combatTab, "Anti-Aim", "antiAim")
@@ -990,6 +976,12 @@ createToggle(combatTab, "Kill Aura", "killAura", function(enabled)
 end)
 createSlider(combatTab, "Kill Aura Range", "killAuraRange", 5, 50)
 createToggle(combatTab, "Fast Hits", "fastHits")
+createToggle(combatTab, "Bad Aura Farm", "badAuraFarm", function(enabled)
+    if enabled then
+        cacheRemotes({"punch", "attack", "hit", "combat"}, cachedAttackRemotes)
+    end
+end)
+createSlider(combatTab, "Bad Aura Interval", "badAuraInterval", 1, 60)
 
 local analyzerTab = createTab("Analyzer")
 createToggle(analyzerTab, "Remote Spy", "remoteSpy", function(enabled)
@@ -1027,6 +1019,36 @@ createButton(analyzerTab, "Scan NPCs", function()
         end
     end
     addLog("Analyzer", "Total NPCs: " .. count)
+end)
+createButton(analyzerTab, "Monitor Weight Tool (HOLD W)", function()
+    addLog("Analyzer", "Monitoring Weight tool - equip it and lift!")
+
+    local weightTool = player.Backpack:FindFirstChild("Weight") or (character and character:FindFirstChild("Weight"))
+    if not weightTool then
+        addLog("Analyzer", "ERROR: Weight tool not found")
+        return
+    end
+
+    if weightTool.Parent == player.Backpack then
+        humanoid:EquipTool(weightTool)
+        task.wait(0.5)
+    end
+
+    weightToolActivatedConnection = weightTool.Activated:Connect(function()
+        addLog("Analyzer", "Weight tool Activated event fired!")
+    end)
+
+    addLog("Analyzer", "Hook installed - now CLICK/HOLD W and check logs")
+    addLog("Analyzer", "Use 'Stop Monitoring' button to disconnect hook")
+end)
+createButton(analyzerTab, "Stop Monitoring", function()
+    if weightToolActivatedConnection then
+        weightToolActivatedConnection:Disconnect()
+        weightToolActivatedConnection = nil
+        addLog("Analyzer", "Weight tool monitoring stopped")
+    else
+        addLog("Analyzer", "No monitoring active")
+    end
 end)
 createButton(analyzerTab, "Scan Tools", function()
     addLog("Analyzer", "Scanning player tools...")
@@ -1494,7 +1516,7 @@ connections.antiAim = RunService.RenderStepped:Connect(function()
     local modes = {
         Static = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 10), 0) end,
         Jitter = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 10 * (math.random() > 0.5 and 1 or -1)), 0) end,
-        Spin = function() return CFrame.new(position) * CFrame.Angles(0, tick() * speed, 0) end,
+        Spin = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(tick() * speed * 50), 0) end,
         Random = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(math.random(-180, 180)), 0) end,
         Desync = function() return CFrame.new(position) * CFrame.Angles(0, math.sin(tick() * speed) * math.pi, 0) end,
         FakeYaw = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(180), 0) end,
@@ -1544,19 +1566,12 @@ connections.killAura = RunService.Heartbeat:Connect(function()
 end)
 
 connections.fastWeight = RunService.Heartbeat:Connect(function()
-    if not settings.fastWeight or #cachedWeightRemotes == 0 then return end
-    if tick() - lastFastWeightFire < 0.1 then return end
+    if not settings.fastWeight then return end
+    if tick() - lastFastWeightFire < 0.05 then return end
 
-    for _, remote in pairs(cachedWeightRemotes) do
-        pcall(function()
-            remote:FireServer()
-        end)
-    end
-
-    if humanoid and humanoid:FindFirstChildOfClass("Animator") then
-        for _, track in pairs(humanoid:FindFirstChildOfClass("Animator"):GetPlayingAnimationTracks()) do
-            track:AdjustSpeed(10)
-        end
+    local weightTool = character and character:FindFirstChild("Weight")
+    if weightTool and weightTool:IsA("Tool") then
+        weightTool:Activate()
     end
 
     lastFastWeightFire = tick()
@@ -1564,69 +1579,93 @@ end)
 
 connections.autoWeight = RunService.Heartbeat:Connect(function()
     if not settings.autoWeight then return end
-    if tick() - lastAutoWeightAction < 1 then return end
+    if tick() - lastAutoWeightAction < 0.5 then return end
 
     local weightTool = player.Backpack:FindFirstChild("Weight")
-    if weightTool then
-        humanoid:EquipTool(weightTool)
-        task.wait(0.1)
-        for _, remote in pairs(cachedWeightRemotes) do
-            pcall(function()
-                remote:FireServer()
-            end)
+    if not weightTool then
+        weightTool = character and character:FindFirstChild("Weight")
+    end
+
+    if weightTool and weightTool:IsA("Tool") then
+        if weightTool.Parent == player.Backpack then
+            humanoid:EquipTool(weightTool)
+            task.wait(0.1)
         end
+        weightTool:Activate()
     end
 
     lastAutoWeightAction = tick()
 end)
 
 connections.durabilityFarm = RunService.Heartbeat:Connect(function()
-    if not settings.durabilityFarm or #cachedDurabilityRemotes == 0 then return end
-    if tick() - lastDurabilityFire < 0.1 then return end
+    if not settings.durabilityFarm then return end
+    if tick() - lastDurabilityFire < 0.05 then return end
 
-    for _, remote in pairs(cachedDurabilityRemotes) do
-        pcall(function()
-            remote:FireServer()
-        end)
+    for _, toolName in ipairs({"Pushups", "Situps", "Handstands"}) do
+        local tool = character and character:FindFirstChild(toolName)
+        if tool and tool:IsA("Tool") then
+            tool:Activate()
+            lastDurabilityFire = tick()
+            break
+        end
     end
-
-    lastDurabilityFire = tick()
 end)
 
 connections.autoDurability = RunService.Heartbeat:Connect(function()
     if not settings.autoDurability then return end
-    if tick() - lastAutoDurabilityAction < 1 then return end
+    if tick() - lastAutoDurabilityAction < 0.5 then return end
 
-    local tools = {"Pushups", "Situps", "Handstands"}
-    for _, toolName in ipairs(tools) do
+    for _, toolName in ipairs({"Pushups", "Situps", "Handstands"}) do
         local tool = player.Backpack:FindFirstChild(toolName)
-        if tool then
-            humanoid:EquipTool(tool)
-            task.wait(0.1)
-            for _, remote in pairs(cachedDurabilityRemotes) do
-                pcall(function()
-                    remote:FireServer()
-                end)
+        if not tool then
+            tool = character and character:FindFirstChild(toolName)
+        end
+
+        if tool and tool:IsA("Tool") then
+            if tool.Parent == player.Backpack then
+                humanoid:EquipTool(tool)
+                task.wait(0.1)
             end
+            tool:Activate()
+            lastAutoDurabilityAction = tick()
             break
         end
     end
-
-    lastAutoDurabilityAction = tick()
 end)
 
 connections.autoRebirth = RunService.Heartbeat:Connect(function()
-    if not settings.autoRebirth or #cachedRebirthRemotes == 0 then return end
+    if not settings.autoRebirth then return end
+    if tick() - lastAutoRebirthFire < 5 then return end
 
-    for _, remote in pairs(cachedRebirthRemotes) do
-        pcall(function()
-            remote:FireServer()
-        end)
+    for _, clickDetector in pairs(Workspace:GetDescendants()) do
+        if clickDetector:IsA("ClickDetector") then
+            local parent = clickDetector.Parent
+            if parent and (string.find(parent.Name:lower(), "rebirth") or string.find(parent.Name:lower(), "prestige")) then
+                fireclickdetector(clickDetector)
+                addLog("AutoRebirth", "Fired ClickDetector: " .. parent.Name)
+                lastAutoRebirthFire = tick()
+                return
+            end
+        end
     end
+
+    for _, proximityPrompt in pairs(Workspace:GetDescendants()) do
+        if proximityPrompt:IsA("ProximityPrompt") then
+            local parent = proximityPrompt.Parent
+            if parent and (string.find(parent.Name:lower(), "rebirth") or string.find(parent.Name:lower(), "prestige")) then
+                fireproximityprompt(proximityPrompt)
+                addLog("AutoRebirth", "Fired ProximityPrompt: " .. parent.Name)
+                lastAutoRebirthFire = tick()
+                return
+            end
+        end
+    end
+
+    lastAutoRebirthFire = tick()
 end)
 
 connections.badAuraFarm = RunService.Heartbeat:Connect(function()
-    if not settings.badAuraFarm or #cachedAttackRemotes == 0 then return end
+    if not settings.badAuraFarm then return end
     if tick() - lastBadAuraFire < settings.badAuraInterval then return end
 
     if tick() - lastPlayerCacheUpdate > 1 then
@@ -1649,11 +1688,12 @@ connections.badAuraFarm = RunService.Heartbeat:Connect(function()
                 if hasGoodAura and (rootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude < 100 then
                     rootPart.CFrame = v.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
                     task.wait(0.05)
-                    for _, remote in pairs(cachedAttackRemotes) do
-                        pcall(function()
-                            remote:FireServer(v.Character.HumanoidRootPart)
-                        end)
+
+                    local punchTool = character and character:FindFirstChild("Punch")
+                    if punchTool and punchTool:IsA("Tool") then
+                        punchTool:Activate()
                     end
+
                     lastBadAuraFire = tick()
                     addLog("BadAura", "Attacking: " .. v.Name .. " [" .. rank .. "]")
                     break
@@ -1738,6 +1778,6 @@ setfpscap(999)
 loadTeleportPoints()
 createWatermark()
 
-addLog("System", "BloodyBlox v0.5.9 loaded")
+addLog("System", "BloodyBlox v0.5.10 loaded")
 addLog("System", "Press INSERT to toggle menu")
-addLog("System", "Remote caching enabled - FPS drops fixed")
+addLog("System", "Tool.Activated hook method - test with Monitor Weight Tool button")
