@@ -461,7 +461,7 @@ local function createWatermark()
     title.Size = UDim2.new(1, 0, 0.5, 0)
     title.Position = UDim2.new(0, 0, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "BloodyBlox v0.5.10"
+    title.Text = "BloodyBlox Beta 0.0.1"
     title.TextColor3 = Color3.fromRGB(255, 50, 50)
     title.TextSize = 16
     title.Font = Enum.Font.GothamBold
@@ -556,7 +556,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(0.5, 0, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BloodyBlox v0.5.10 | Muscle Legends"
+title.Text = "BloodyBlox Beta 0.0.1 | Muscle Legends"
 title.TextColor3 = Color3.fromRGB(255, 50, 50)
 title.TextSize = 18
 title.Font = Enum.Font.GothamBold
@@ -1778,6 +1778,6 @@ setfpscap(999)
 loadTeleportPoints()
 createWatermark()
 
-addLog("System", "BloodyBlox v0.5.10 loaded")
+addLog("System", "BloodyBlox Beta 0.0.1 loaded")
 addLog("System", "Press INSERT to toggle menu")
 addLog("System", "Tool.Activated hook method - test with Monitor Weight Tool button")
