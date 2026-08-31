@@ -1,4 +1,4 @@
--- BloodyBlox v0.5.7
+-- BloodyBlox v0.5.8
 
 repeat task.wait() until game:IsLoaded()
 repeat task.wait() until game.Players.LocalPlayer
@@ -28,10 +28,9 @@ local rootPart = character:WaitForChild("HumanoidRootPart")
 local settings = {
     fastWeight = false,
     autoWeight = false,
-    fastDurability = false,
+    durabilityFarm = false,
     autoDurability = false,
     autoRebirth = false,
-    combatFarm = false,
     badAuraFarm = false,
     badAuraInterval = 5,
     antiAim = false,
@@ -41,6 +40,7 @@ local settings = {
     fastHits = false,
     remoteSpy = false,
     walkWithDumbbell = false,
+    walkSpeed = 16,
     fastStrafe = false,
     antiRagdoll = false,
     airStrafe = false,
@@ -70,11 +70,18 @@ local logs = {}
 local maxLogs = 100
 local originalLightingSettings = {}
 local originalCanCollide = {}
+local originalWalkSpeed = 16
 local godModeActive = false
 local remoteHookInstalled = false
 local originalNamecall
 local captureActive = false
 local capturedRemotes = {}
+
+local lastFastWeightFire = 0
+local lastDurabilityFire = 0
+local lastKillAuraFire = 0
+local lastBadAuraFire = 0
+local lastFastHitsFire = 0
 
 local function addLog(category, message)
     local timestamp = os.date("%H:%M:%S")
@@ -323,7 +330,9 @@ local function installRemoteHook()
                     local argType = typeof(arg)
                     local argValue = tostring(arg)
                     if argType == "table" then
-                        argValue = HttpService:JSONEncode(arg)
+                        pcall(function()
+                            argValue = HttpService:JSONEncode(arg)
+                        end)
                     end
                     table.insert(argParts, string.format("[%d]=%s (%s)", i, argValue, argType))
                 end
@@ -377,7 +386,7 @@ local function createWatermark()
     title.Size = UDim2.new(1, 0, 0.5, 0)
     title.Position = UDim2.new(0, 0, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "BloodyBlox v0.5.7"
+    title.Text = "BloodyBlox v0.5.8"
     title.TextColor3 = Color3.fromRGB(255, 50, 50)
     title.TextSize = 16
     title.Font = Enum.Font.GothamBold
@@ -472,7 +481,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(0.5, 0, 1, 0)
 title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BloodyBlox v0.5.7 | Muscle Legends"
+title.Text = "BloodyBlox v0.5.8 | Muscle Legends"
 title.TextColor3 = Color3.fromRGB(255, 50, 50)
 title.TextSize = 18
 title.Font = Enum.Font.GothamBold
@@ -725,6 +734,88 @@ local function createSlider(parent, text, settingKey, min, max, callback)
     return sliderFrame
 end
 
+local function createDropdown(parent, text, settingKey, options, callback)
+    local dropdownFrame = Instance.new("Frame")
+    dropdownFrame.Size = UDim2.new(1, -10, 0, 30)
+    dropdownFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    dropdownFrame.BorderSizePixel = 0
+    dropdownFrame.Parent = parent
+
+    local dropdownCorner = Instance.new("UICorner")
+    dropdownCorner.CornerRadius = UDim.new(0, 6)
+    dropdownCorner.Parent = dropdownFrame
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.5, 0, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 14
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = dropdownFrame
+
+    local dropdown = Instance.new("TextButton")
+    dropdown.Size = UDim2.new(0.45, 0, 0.8, 0)
+    dropdown.Position = UDim2.new(0.52, 0, 0.1, 0)
+    dropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    dropdown.BorderSizePixel = 0
+    dropdown.Text = settings[settingKey]
+    dropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    dropdown.TextSize = 12
+    dropdown.Font = Enum.Font.Gotham
+    dropdown.Parent = dropdownFrame
+
+    local dropdownButtonCorner = Instance.new("UICorner")
+    dropdownButtonCorner.CornerRadius = UDim.new(0, 4)
+    dropdownButtonCorner.Parent = dropdown
+
+    local optionsFrame = Instance.new("Frame")
+    optionsFrame.Size = UDim2.new(1, 0, 0, #options * 25)
+    optionsFrame.Position = UDim2.new(0, 0, 1, 5)
+    optionsFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    optionsFrame.BorderSizePixel = 0
+    optionsFrame.Visible = false
+    optionsFrame.ZIndex = 10
+    optionsFrame.Parent = dropdownFrame
+
+    local optionsCorner = Instance.new("UICorner")
+    optionsCorner.CornerRadius = UDim.new(0, 4)
+    optionsCorner.Parent = optionsFrame
+
+    local optionsLayout = Instance.new("UIListLayout")
+    optionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    optionsLayout.Padding = UDim.new(0, 2)
+    optionsLayout.Parent = optionsFrame
+
+    for _, option in ipairs(options) do
+        local optionButton = Instance.new("TextButton")
+        optionButton.Size = UDim2.new(1, 0, 0, 23)
+        optionButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        optionButton.BorderSizePixel = 0
+        optionButton.Text = option
+        optionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        optionButton.TextSize = 12
+        optionButton.Font = Enum.Font.Gotham
+        optionButton.ZIndex = 11
+        optionButton.Parent = optionsFrame
+
+        optionButton.MouseButton1Click:Connect(function()
+            settings[settingKey] = option
+            dropdown.Text = option
+            optionsFrame.Visible = false
+            if callback then callback(option) end
+        end)
+    end
+
+    dropdown.MouseButton1Click:Connect(function()
+        optionsFrame.Visible = not optionsFrame.Visible
+    end)
+
+    return dropdownFrame
+end
+
 local function createButton(parent, text, callback)
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(1, -10, 0, 35)
@@ -795,16 +886,16 @@ end
 local farmTab = createTab("Farm")
 createToggle(farmTab, "Fast Weight", "fastWeight")
 createToggle(farmTab, "Auto Weight", "autoWeight")
-createToggle(farmTab, "Fast Durability", "fastDurability")
+createToggle(farmTab, "Durability Farm", "durabilityFarm")
 createToggle(farmTab, "Auto Durability", "autoDurability")
 createToggle(farmTab, "Auto Rebirth", "autoRebirth")
-createToggle(farmTab, "Combat Farm", "combatFarm")
 createToggle(farmTab, "Bad Aura Farm", "badAuraFarm")
 createSlider(farmTab, "Bad Aura Interval", "badAuraInterval", 1, 60)
 
 local combatTab = createTab("Combat")
 createToggle(combatTab, "Anti-Aim", "antiAim")
 createSlider(combatTab, "Anti-Aim Speed", "antiAimSpeed", 1, 10)
+createDropdown(combatTab, "Anti-Aim Type", "antiAimType", {"Static", "Jitter", "Spin", "Random", "Desync", "FakeYaw", "FakeLag", "Freestanding", "ManualAA", "EdgeAA"})
 createToggle(combatTab, "Kill Aura", "killAura")
 createToggle(combatTab, "Fast Hits", "fastHits")
 
@@ -872,7 +963,6 @@ createButton(analyzerTab, "Dump Character Offsets", function()
     addLog("Analyzer", "Character: " .. character.Name)
     for _, part in pairs(character:GetDescendants()) do
         if part:IsA("BasePart") then
-            local offset = rootPart.Position - part.Position
             addLog("Analyzer", string.format("%s: CFrame(%s)", part.Name, tostring(part.CFrame)))
         end
     end
@@ -920,6 +1010,7 @@ end)
 
 local miscTab = createTab("Misc")
 createToggle(miscTab, "Walk With Dumbbell", "walkWithDumbbell")
+createSlider(miscTab, "Walk Speed", "walkSpeed", 16, 100)
 createToggle(miscTab, "Fast Strafe", "fastStrafe")
 createToggle(miscTab, "Anti Ragdoll", "antiRagdoll")
 createToggle(miscTab, "Air Strafe", "airStrafe")
@@ -1297,38 +1388,61 @@ player.CharacterAdded:Connect(function(newChar)
     character = newChar
     humanoid = newChar:WaitForChild("Humanoid")
     rootPart = newChar:WaitForChild("HumanoidRootPart")
+    originalWalkSpeed = humanoid.WalkSpeed
 end)
 
 connections.antiAim = RunService.RenderStepped:Connect(function()
-    if not settings.antiAim then return end
+    if not settings.antiAim or not rootPart then return end
+
     local speed = settings.antiAimSpeed * 5
+    local currentCFrame = rootPart.CFrame
+    local position = currentCFrame.Position
+
     local modes = {
-        Static = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(speed), 0) end,
-        Jitter = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(speed * (math.random() > 0.5 and 1 or -1)), 0) end,
-        Spin = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(speed), 0) end,
-        Random = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(math.random(-speed, speed)), 0) end,
-        Desync = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(speed * math.sin(tick())), 0) end,
-        FakeYaw = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(180), 0) end,
-        FakeLag = function() if tick() % 0.5 < 0.25 then rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(speed), 0) end end,
-        Freestanding = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(speed * math.cos(tick())), 0) end,
-        ManualAA = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(speed * 2), 0) end,
-        EdgeAA = function() rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(speed * math.sin(tick() * 2)), 0) end
+        Static = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed), 0) end,
+        Jitter = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * (math.random() > 0.5 and 1 or -1)), 0) end,
+        Spin = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(tick() * speed * 50), 0) end,
+        Random = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(math.random(-speed, speed)), 0) end,
+        Desync = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * math.sin(tick() * 5)), 0) end,
+        FakeYaw = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(180), 0) end,
+        FakeLag = function()
+            if tick() % 0.5 < 0.25 then
+                return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 10), 0)
+            end
+            return currentCFrame
+        end,
+        Freestanding = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * math.cos(tick() * 3)), 0) end,
+        ManualAA = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 20), 0) end,
+        EdgeAA = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * math.sin(tick() * 10)), 0) end
     }
+
     local mode = modes[settings.antiAimType]
-    if mode then mode() end
+    if mode then
+        rootPart.CFrame = mode()
+    end
 end)
 
 connections.killAura = RunService.Heartbeat:Connect(function()
     if not settings.killAura then return end
+    if tick() - lastKillAuraFire < 0.5 then return end
+
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= player and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
             local distance = (rootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude
             if distance < 20 then
                 for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                    if remote:IsA("RemoteEvent") and (string.find(remote.Name:lower(), "punch") or string.find(remote.Name:lower(), "attack") or string.find(remote.Name:lower(), "hit")) then
-                        remote:FireServer(v.Character.HumanoidRootPart)
+                    if remote:IsA("RemoteEvent") then
+                        local name = remote.Name:lower()
+                        if string.find(name, "punch") or string.find(name, "attack") or string.find(name, "hit") or string.find(name, "combat") then
+                            pcall(function()
+                                remote:FireServer(v.Character.HumanoidRootPart)
+                            end)
+                            lastKillAuraFire = tick()
+                            break
+                        end
                     end
                 end
+                break
             end
         end
     end
@@ -1336,89 +1450,127 @@ end)
 
 connections.fastWeight = RunService.Heartbeat:Connect(function()
     if not settings.fastWeight then return end
+    if tick() - lastFastWeightFire < 0.1 then return end
+
     for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-        if remote:IsA("RemoteEvent") and (string.find(remote.Name:lower(), "weight") or string.find(remote.Name:lower(), "lift") or string.find(remote.Name:lower(), "dumbbell")) then
-            remote:FireServer()
+        if remote:IsA("RemoteEvent") then
+            local name = remote.Name:lower()
+            if string.find(name, "weight") or string.find(name, "lift") or string.find(name, "train") or string.find(name, "exercise") then
+                pcall(function()
+                    remote:FireServer()
+                end)
+            end
         end
     end
+
     if humanoid and humanoid:FindFirstChildOfClass("Animator") then
         for _, track in pairs(humanoid:FindFirstChildOfClass("Animator"):GetPlayingAnimationTracks()) do
             track:AdjustSpeed(10)
         end
     end
+
+    lastFastWeightFire = tick()
 end)
 
-connections.fastDurability = RunService.Heartbeat:Connect(function()
-    if not settings.fastDurability then return end
+connections.durabilityFarm = RunService.Heartbeat:Connect(function()
+    if not settings.durabilityFarm then return end
+    if tick() - lastDurabilityFire < 0.1 then return end
+
     for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-        if remote:IsA("RemoteEvent") and (string.find(remote.Name:lower(), "durability") or string.find(remote.Name:lower(), "defense") or string.find(remote.Name:lower(), "train")) then
-            remote:FireServer()
+        if remote:IsA("RemoteEvent") then
+            local name = remote.Name:lower()
+            if string.find(name, "durability") or string.find(name, "defense") or string.find(name, "pushup") or string.find(name, "situp") then
+                pcall(function()
+                    remote:FireServer()
+                end)
+            end
         end
     end
+
+    lastDurabilityFire = tick()
 end)
 
 connections.autoRebirth = RunService.Heartbeat:Connect(function()
     if not settings.autoRebirth then return end
+
     for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("ClickDetector") and string.find(v.Parent.Name:lower(), "rebirth") then
-            fireclickdetector(v)
+        if v:IsA("ClickDetector") and v.Parent and string.find(v.Parent.Name:lower(), "rebirth") then
+            pcall(function()
+                fireclickdetector(v)
+            end)
         end
     end
+
     for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-        if remote:IsA("RemoteEvent") and string.find(remote.Name:lower(), "rebirth") then
-            remote:FireServer()
-        end
-    end
-end)
-
-connections.combatFarm = RunService.Heartbeat:Connect(function()
-    if not settings.combatFarm then return end
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
-            local isPlayer = false
-            for _, p in pairs(Players:GetPlayers()) do
-                if p.Character == v then
-                    isPlayer = true
-                    break
-                end
-            end
-            if not isPlayer and (rootPart.Position - v.HumanoidRootPart.Position).Magnitude < 50 then
-                rootPart.CFrame = v.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                    if remote:IsA("RemoteEvent") and (string.find(remote.Name:lower(), "punch") or string.find(remote.Name:lower(), "attack")) then
-                        remote:FireServer(v.HumanoidRootPart)
-                    end
-                end
-                break
+        if remote:IsA("RemoteEvent") then
+            local name = remote.Name:lower()
+            if string.find(name, "rebirth") or string.find(name, "prestige") or string.find(name, "reset") then
+                pcall(function()
+                    remote:FireServer()
+                end)
             end
         end
     end
 end)
 
-local badAuraLastAttack = tick()
 connections.badAuraFarm = RunService.Heartbeat:Connect(function()
     if not settings.badAuraFarm then return end
-    if tick() - badAuraLastAttack < settings.badAuraInterval then return end
+    if tick() - lastBadAuraFire < settings.badAuraInterval then return end
 
     for _, v in pairs(Workspace:GetDescendants()) do
         if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and string.find(v.Name:lower(), "bad") then
             if (rootPart.Position - v.HumanoidRootPart.Position).Magnitude < 100 then
                 rootPart.CFrame = v.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
                 for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                    if remote:IsA("RemoteEvent") and (string.find(remote.Name:lower(), "punch") or string.find(remote.Name:lower(), "attack")) then
-                        remote:FireServer(v.HumanoidRootPart)
+                    if remote:IsA("RemoteEvent") then
+                        local name = remote.Name:lower()
+                        if string.find(name, "punch") or string.find(name, "attack") then
+                            pcall(function()
+                                remote:FireServer(v.HumanoidRootPart)
+                            end)
+                        end
                     end
                 end
-                badAuraLastAttack = tick()
+                lastBadAuraFire = tick()
                 break
             end
         end
     end
 end)
 
+connections.walkWithDumbbell = RunService.Heartbeat:Connect(function()
+    if not settings.walkWithDumbbell then return end
+    if humanoid then
+        humanoid.WalkSpeed = settings.walkSpeed
+    end
+end)
+
+connections.fastStrafe = RunService.Heartbeat:Connect(function()
+    if not settings.fastStrafe then return end
+    if humanoid then
+        humanoid.AutoRotate = false
+
+        local camera = workspace.CurrentCamera
+        local moveDirection = humanoid.MoveDirection
+
+        if moveDirection.Magnitude > 0 then
+            local targetCFrame = CFrame.new(rootPart.Position, rootPart.Position + Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z))
+            rootPart.CFrame = targetCFrame
+        end
+    end
+end)
+
+connections.antiRagdoll = RunService.Stepped:Connect(function()
+    if not settings.antiRagdoll then return end
+    if humanoid then
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    end
+end)
+
 connections.airStrafe = RunService.RenderStepped:Connect(function()
     if not settings.airStrafe then return end
-    if humanoid.FloorMaterial == Enum.Material.Air then
+    if humanoid and humanoid.FloorMaterial == Enum.Material.Air then
         local camera = workspace.CurrentCamera
         local direction = Vector3.new(0, 0, 0)
 
@@ -1436,7 +1588,13 @@ connections.airStrafe = RunService.RenderStepped:Connect(function()
         end
 
         if direction.Magnitude > 0 then
-            rootPart.Velocity = Vector3.new(direction.X * 50, rootPart.Velocity.Y, direction.Z * 50)
+            local currentVelocity = rootPart.Velocity
+            local strafeForce = direction.Unit * 30
+            rootPart.Velocity = Vector3.new(
+                currentVelocity.X + strafeForce.X,
+                currentVelocity.Y,
+                currentVelocity.Z + strafeForce.Z
+            )
         end
     end
 end)
@@ -1450,5 +1608,6 @@ setfpscap(999)
 loadTeleportPoints()
 createWatermark()
 
-addLog("System", "BloodyBlox v0.5.7 loaded")
+addLog("System", "BloodyBlox v0.5.8 loaded")
 addLog("System", "Press INSERT to toggle menu")
+addLog("System", "All 10 tabs restored: Farm, Combat, Analyzer, Misc, Visual, Player, Teleport, Config, Logs, Settings")
