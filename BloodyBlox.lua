@@ -1593,22 +1593,32 @@ connections.killAura = RunService.Heartbeat:Connect(function()
     end
 end)
 
-connections.fastWeight = RunService.Heartbeat:Connect(function()
+connections.fastWeightActivate = RunService.Heartbeat:Connect(function()
     if not settings.fastWeight then return end
     if tick() - lastFastWeightFire < 0.05 then return end
 
     local weightTool = character and character:FindFirstChild("Weight")
     if weightTool and weightTool:IsA("Tool") then
         weightTool:Activate()
+    end
 
-        if humanoid and humanoid:FindFirstChildOfClass("Animator") then
-            for _, track in pairs(humanoid:FindFirstChildOfClass("Animator"):GetPlayingAnimationTracks()) do
+    lastFastWeightFire = tick()
+end)
+
+connections.fastWeightSpeed = RunService.RenderStepped:Connect(function()
+    if not settings.fastWeight then return end
+
+    if humanoid and humanoid:FindFirstChildOfClass("Animator") then
+        for _, track in pairs(humanoid:FindFirstChildOfClass("Animator"):GetPlayingAnimationTracks()) do
+            if track.Animation and string.find(track.Animation.Name:lower(), "weight") then
+                track:AdjustSpeed(10)
+            elseif track.Animation and string.find(track.Animation.Name:lower(), "lift") then
+                track:AdjustSpeed(10)
+            elseif not track.Animation then
                 track:AdjustSpeed(10)
             end
         end
     end
-
-    lastFastWeightFire = tick()
 end)
 
 connections.autoWeight = RunService.Heartbeat:Connect(function()
