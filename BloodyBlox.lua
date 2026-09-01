@@ -1039,154 +1039,301 @@ createToggle(analyzerTab, "Remote Spy", "remoteSpy", function(enabled)
         installRemoteHook()
     end
 end)
-createButton(analyzerTab, "Scan Remotes", function()
-    addLog("Analyzer", "Scanning ReplicatedStorage remotes...")
-    local count = 0
-    for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-            addLog("Analyzer", "Found: " .. v:GetFullName())
-            count = count + 1
-        end
+createButton(analyzerTab, "1. Full Remote Inventory", function()
+    addLog("Analyzer", "=== REMOTE API INVENTORY ===")
+    addLog("Analyzer", "Scanning client-accessible surfaces...")
+
+    local remoteData = {}
+    local locations = {
+        {name = "ReplicatedStorage", container = ReplicatedStorage},
+        {name = "Workspace", container = Workspace},
+        {name = "PlayerGui", container = player:WaitForChild("PlayerGui")},
+        {name = "Backpack", container = player.Backpack},
+    }
+
+    if character then
+        table.insert(locations, {name = "Character", container = character})
     end
-    addLog("Analyzer", "Total remotes: " .. count)
+
+    for _, location in ipairs(locations) do
+        local count = 0
+        for _, obj in pairs(location.container:GetDescendants()) do
+            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                local path = obj:GetFullName()
+                local remoteType = obj:IsA("RemoteEvent") and "Event" or "Function"
+
+                table.insert(remoteData, {
+                    name = obj.Name,
+                    path = path,
+                    type = remoteType,
+                    location = location.name
+                })
+
+                addLog("Analyzer", string.format("[%s] %s | Type: %s", location.name, path, remoteType))
+                count = count + 1
+            end
+        end
+        addLog("Analyzer", string.format("%s: %d remotes found", location.name, count))
+    end
+
+    _G.BloodyBloxRemoteInventory = remoteData
+    addLog("Analyzer", string.format("=== TOTAL: %d remotes stored in _G.BloodyBloxRemoteInventory ===", #remoteData))
+    addLog("Analyzer", "Use '2. Classify Remotes' to analyze findings")
 end)
-createButton(analyzerTab, "Scan NPCs", function()
-    addLog("Analyzer", "Scanning Workspace NPCs...")
-    local count = 0
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") then
-            local isPlayer = false
-            for _, p in pairs(Players:GetPlayers()) do
-                if p.Character == v then
-                    isPlayer = true
+createButton(analyzerTab, "2. Classify Remotes", function()
+    local inventory = _G.BloodyBloxRemoteInventory
+    if not inventory or #inventory == 0 then
+        addLog("Analyzer", "ERROR: No inventory found - run '1. Full Remote Inventory' first")
+        return
+    end
+
+    addLog("Analyzer", "=== REMOTE CLASSIFICATION ===")
+
+    local categories = {
+        combat = {"punch", "hit", "attack", "damage", "kill", "fight", "combat"},
+        weight = {"weight", "lift", "strength", "muscle"},
+        durability = {"pushup", "situp", "handstand", "durability", "defense", "endurance"},
+        rebirth = {"rebirth", "prestige", "reset", "ascend"},
+        admin = {"admin", "mod", "kick", "ban", "teleport", "command"},
+        stats = {"stat", "level", "xp", "exp", "point"},
+        shop = {"buy", "purchase", "shop", "store", "sell"},
+        social = {"friend", "chat", "message", "party", "trade"}
+    }
+
+    local classified = {}
+    for category, keywords in pairs(categories) do
+        classified[category] = {}
+    end
+    classified.unknown = {}
+
+    for _, remote in ipairs(inventory) do
+        local nameLower = remote.name:lower()
+        local pathLower = remote.path:lower()
+        local matched = false
+
+        for category, keywords in pairs(categories) do
+            for _, keyword in ipairs(keywords) do
+                if string.find(nameLower, keyword) or string.find(pathLower, keyword) then
+                    table.insert(classified[category], remote)
+                    matched = true
                     break
                 end
             end
-            if not isPlayer then
-                addLog("Analyzer", "NPC: " .. v.Name .. " | HP: " .. v.Humanoid.Health)
-                count = count + 1
+            if matched then break end
+        end
+
+        if not matched then
+            table.insert(classified.unknown, remote)
+        end
+    end
+
+    for category, remotes in pairs(classified) do
+        if #remotes > 0 then
+            addLog("Analyzer", string.format("--- %s (%d) ---", category:upper(), #remotes))
+            for _, remote in ipairs(remotes) do
+                addLog("Analyzer", string.format("  %s [%s]", remote.name, remote.type))
             end
         end
     end
-    addLog("Analyzer", "Total NPCs: " .. count)
-end)
-createButton(analyzerTab, "Monitor Weight Tool (HOLD W)", function()
-    addLog("Analyzer", "Monitoring Weight tool - equip it and lift!")
 
-    local weightTool = player.Backpack:FindFirstChild("Weight") or (character and character:FindFirstChild("Weight"))
-    if not weightTool then
-        addLog("Analyzer", "ERROR: Weight tool not found")
+    _G.BloodyBloxClassified = classified
+    addLog("Analyzer", "=== Classification complete - stored in _G.BloodyBloxClassified ===")
+    addLog("Analyzer", "Use '3. Test Remote (Manual)' to analyze specific remotes")
+end)
+createButton(analyzerTab, "3. Manual Remote Test", function()
+    addLog("Analyzer", "=== MANUAL REMOTE TESTING MODE ===")
+    addLog("Analyzer", "Instructions:")
+    addLog("Analyzer", "1. Play normally - lift weight, rebirth, attack")
+    addLog("Analyzer", "2. Watch for Remote calls in console (if any bypass Byfron)")
+    addLog("Analyzer", "3. Copy logs and analyze patterns")
+    addLog("Analyzer", "")
+    addLog("Analyzer", "Looking for:")
+    addLog("Analyzer", "- Remotes called during actions")
+    addLog("Analyzer", "- Expected parameters")
+    addLog("Analyzer", "- Server validation behavior")
+    addLog("Analyzer", "- Cooldown timings")
+    addLog("Analyzer", "")
+    addLog("Analyzer", "IMPORTANT: Cannot hook RemoteEvent.FireServer due to Byfron")
+    addLog("Analyzer", "Alternative: manual observation + controlled testing")
+end)
+
+createButton(analyzerTab, "4. Controlled Fuzzing Test", function()
+    local classified = _G.BloodyBloxClassified
+    if not classified then
+        addLog("Analyzer", "ERROR: No classification found - run steps 1-2 first")
         return
     end
 
-    if weightTool.Parent == player.Backpack then
-        humanoid:EquipTool(weightTool)
+    addLog("Analyzer", "=== CONTROLLED FUZZING ===")
+    addLog("Analyzer", "WARNING: This will test Remotes with various payloads")
+    addLog("Analyzer", "Limit: 5 requests per Remote to avoid rate limiting")
+
+    local testPayloads = {
+        {},                              -- no args
+        {999},                          -- large number
+        {true},                         -- boolean
+        {"bypass"},                     -- string
+        {player},                       -- player instance
+        {nil, 999},                     -- nil + number
+    }
+
+    local testCategories = {"weight", "durability", "combat"}
+    local testedCount = 0
+
+    for _, category in ipairs(testCategories) do
+        if classified[category] and #classified[category] > 0 then
+            addLog("Analyzer", string.format("--- Testing %s remotes ---", category:upper()))
+
+            for _, remote in ipairs(classified[category]) do
+                if testedCount >= 15 then
+                    addLog("Analyzer", "Test limit reached (15 remotes) - stopping")
+                    return
+                end
+
+                local obj = game:GetService("ReplicatedStorage"):FindFirstChild(remote.name, true)
+                if not obj then
+                    obj = Workspace:FindFirstChild(remote.name, true)
+                end
+
+                if obj and obj:IsA("RemoteEvent") then
+                    addLog("Analyzer", string.format("Testing: %s", remote.name))
+
+                    for i, payload in ipairs(testPayloads) do
+                        local success, err = pcall(function()
+                            obj:FireServer(unpack(payload))
+                        end)
+
+                        if success then
+                            addLog("Analyzer", string.format("  Payload %d: SENT", i))
+                        else
+                            addLog("Analyzer", string.format("  Payload %d: BLOCKED - %s", i, tostring(err)))
+                        end
+
+                        task.wait(0.2)
+                    end
+
+                    testedCount = testedCount + 1
+                    task.wait(1)
+                end
+            end
+        end
+    end
+
+    addLog("Analyzer", string.format("=== Fuzzing complete - tested %d remotes ===", testedCount))
+    addLog("Analyzer", "Analyze logs for unexpected SUCCESS responses")
+end)
+
+createButton(analyzerTab, "5. Race Condition Test", function()
+    local classified = _G.BloodyBloxClassified
+    if not classified or not classified.weight or #classified.weight == 0 then
+        addLog("Analyzer", "ERROR: No weight remotes found - run steps 1-2 first")
+        return
+    end
+
+    addLog("Analyzer", "=== RACE CONDITION TEST ===")
+    addLog("Analyzer", "Testing parallel requests for weight remotes...")
+
+    local weightRemote = classified.weight[1]
+    local obj = game:GetService("ReplicatedStorage"):FindFirstChild(weightRemote.name, true)
+
+    if not obj then
+        obj = Workspace:FindFirstChild(weightRemote.name, true)
+    end
+
+    if not obj or not obj:IsA("RemoteEvent") then
+        addLog("Analyzer", "ERROR: Remote object not found or not accessible")
+        return
+    end
+
+    addLog("Analyzer", string.format("Target: %s", weightRemote.name))
+    addLog("Analyzer", "Spawning 10 parallel requests...")
+
+    local startTime = tick()
+    for i = 1, 10 do
+        task.spawn(function()
+            pcall(function()
+                obj:FireServer()
+            end)
+            addLog("Analyzer", string.format("Request %d sent at %.3fs", i, tick() - startTime))
+        end)
+    end
+
+    task.wait(2)
+    addLog("Analyzer", "Race condition test complete")
+    addLog("Analyzer", "If server processed multiple requests simultaneously - possible vulnerability")
+    addLog("Analyzer", "Check game stats to see if Strength increased more than expected")
+end)
+
+createButton(analyzerTab, "6. State Desync Test", function()
+    addLog("Analyzer", "=== STATE DESYNC TEST ===")
+    addLog("Analyzer", "Testing Remote calls during abnormal states...")
+
+    local classified = _G.BloodyBloxClassified
+    if not classified then
+        addLog("Analyzer", "ERROR: Run steps 1-2 first")
+        return
+    end
+
+    local testRemote = nil
+    if classified.weight and #classified.weight > 0 then
+        testRemote = classified.weight[1]
+    elseif classified.combat and #classified.combat > 0 then
+        testRemote = classified.combat[1]
+    end
+
+    if not testRemote then
+        addLog("Analyzer", "ERROR: No suitable remote found for testing")
+        return
+    end
+
+    local obj = game:GetService("ReplicatedStorage"):FindFirstChild(testRemote.name, true)
+    if not obj or not obj:IsA("RemoteEvent") then
+        addLog("Analyzer", "ERROR: Remote not accessible")
+        return
+    end
+
+    addLog("Analyzer", string.format("Target: %s", testRemote.name))
+
+    -- Test 1: Call while Character is nil
+    addLog("Analyzer", "Test 1: Calling with Character reference cleared...")
+    local originalChar = character
+    character = nil
+    pcall(function()
+        obj:FireServer()
+    end)
+    character = originalChar
+    task.wait(0.5)
+
+    -- Test 2: Call while Humanoid.Health = 0
+    if humanoid then
+        addLog("Analyzer", "Test 2: Calling while Humanoid.Health = 0...")
+        local originalHealth = humanoid.Health
+        humanoid.Health = 0
+        task.wait(0.1)
+        pcall(function()
+            obj:FireServer()
+        end)
+        humanoid.Health = originalHealth
         task.wait(0.5)
     end
 
-    weightToolActivatedConnection = weightTool.Activated:Connect(function()
-        addLog("Analyzer", "Weight tool Activated event fired!")
-    end)
-
-    addLog("Analyzer", "Hook installed - now CLICK/HOLD W and check logs")
-    addLog("Analyzer", "Use 'Stop Monitoring' button to disconnect hook")
-end)
-createButton(analyzerTab, "Stop Monitoring", function()
-    if weightToolActivatedConnection then
-        weightToolActivatedConnection:Disconnect()
-        weightToolActivatedConnection = nil
-        addLog("Analyzer", "Weight tool monitoring stopped")
-    else
-        addLog("Analyzer", "No monitoring active")
-    end
-end)
-createButton(analyzerTab, "Scan Rebirth Objects", function()
-    addLog("Analyzer", "Scanning Workspace for rebirth objects...")
-    local clickCount = 0
-    local promptCount = 0
-
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj:IsA("ClickDetector") then
-            local parent = obj.Parent
-            if parent and (string.find(parent.Name:lower(), "rebirth") or string.find(parent.Name:lower(), "prestige") or string.find(parent.Name:lower(), "reset")) then
-                addLog("Analyzer", "ClickDetector found: " .. parent:GetFullName())
-                clickCount = clickCount + 1
-            end
-        elseif obj:IsA("ProximityPrompt") then
-            local parent = obj.Parent
-            if parent and (string.find(parent.Name:lower(), "rebirth") or string.find(parent.Name:lower(), "prestige") or string.find(parent.Name:lower(), "reset")) then
-                addLog("Analyzer", "ProximityPrompt found: " .. parent:GetFullName())
-                promptCount = promptCount + 1
-            end
-        end
+    -- Test 3: Call during rapid position change
+    if rootPart then
+        addLog("Analyzer", "Test 3: Calling during rapid teleport...")
+        local originalPos = rootPart.CFrame
+        rootPart.CFrame = originalPos + Vector3.new(0, 1000, 0)
+        pcall(function()
+            obj:FireServer()
+        end)
+        task.wait(0.1)
+        rootPart.CFrame = originalPos
+        task.wait(0.5)
     end
 
-    addLog("Analyzer", string.format("Total: %d ClickDetectors, %d ProximityPrompts", clickCount, promptCount))
-
-    if clickCount == 0 and promptCount == 0 then
-        addLog("Analyzer", "WARNING: No rebirth objects found - game likely uses RemoteEvent")
-        addLog("Analyzer", "Enable Remote Spy and rebirth manually to capture the Remote")
-    end
+    addLog("Analyzer", "=== State desync test complete ===")
+    addLog("Analyzer", "Check game state for unexpected results")
+    addLog("Analyzer", "If any test triggered server action - possible vulnerability")
 end)
-createButton(analyzerTab, "Test Remote Spy Hook", function()
-    addLog("Analyzer", "Testing Remote Spy hook with fake RemoteEvent...")
-
-    local testRemote = Instance.new("RemoteEvent")
-    testRemote.Name = "TestRemoteEvent"
-    testRemote.Parent = ReplicatedStorage
-
-    pcall(function()
-        testRemote:FireServer("test_arg1", 123, true, {key = "value"})
-    end)
-
-    task.wait(0.5)
-    addLog("Analyzer", "Test RemoteEvent fired - check logs for [RemoteSpy] entry")
-    addLog("Analyzer", "If NO [RemoteSpy] entry appeared - hookfunction is blocked by anti-cheat")
-
-    testRemote:Destroy()
-end)
-createButton(analyzerTab, "Scan Tools", function()
-    addLog("Analyzer", "Scanning player tools...")
-    local count = 0
-    for _, tool in pairs(player.Backpack:GetChildren()) do
-        if tool:IsA("Tool") then
-            addLog("Analyzer", "Tool: " .. tool.Name)
-            count = count + 1
-        end
-    end
-    if character then
-        for _, tool in pairs(character:GetChildren()) do
-            if tool:IsA("Tool") then
-                addLog("Analyzer", "Equipped: " .. tool.Name)
-                count = count + 1
-            end
-        end
-    end
-    addLog("Analyzer", "Total tools: " .. count)
-end)
-createButton(analyzerTab, "Dump Character Offsets", function()
-    if not character then
-        addLog("Analyzer", "Character unavailable")
-        return
-    end
-    addLog("Analyzer", "Character: " .. character.Name)
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            addLog("Analyzer", string.format("%s: CFrame(%s)", part.Name, tostring(part.CFrame)))
-        end
-    end
-end)
-createButton(analyzerTab, "Capture Weight/Durability/Rebirth/Combat", function()
-    captureActive = true
-    capturedRemotes = {}
-    addLog("Analyzer", "Capture started - perform actions manually")
-end)
-createButton(analyzerTab, "Cancel Capture", function()
-    captureActive = false
-    addLog("Analyzer", "Capture cancelled")
-end)
-createButton(analyzerTab, "Run Last Capture", function()
-    if #capturedRemotes == 0 then
         addLog("Analyzer", "No capture profile loaded")
         return
     end
@@ -1756,57 +1903,30 @@ connections.killAura = RunService.Heartbeat:Connect(function()
 end)
 
 connections.fastWeight = RunService.Heartbeat:Connect(function()
-    if not settings.fastWeight then
-        return
-    end
+    if not settings.fastWeight then return end
+    if tick() - lastFastWeightFire < 0.01 then return end
 
-    addLog("FastWeight", "Loop running - setting is ON")
-
-    if tick() - lastFastWeightFire < 0.01 then
-        return
-    end
-
-    addLog("FastWeight", "Cooldown passed")
-
-    if not character then
-        addLog("FastWeight", "ERROR: character is nil")
-        return
-    end
-
-    local weightTool = character:FindFirstChild("Weight")
+    local weightTool = character and character:FindFirstChild("Weight")
 
     if not weightTool then
-        addLog("FastWeight", "ERROR: Weight tool not found in Character")
-
         local backpackWeight = player.Backpack:FindFirstChild("Weight")
         if backpackWeight then
-            addLog("FastWeight", "Weight found in Backpack - equipping")
             humanoid:EquipTool(backpackWeight)
-            task.wait(0.1)
+            task.wait(0.05)
             weightTool = character:FindFirstChild("Weight")
-        else
-            addLog("FastWeight", "ERROR: Weight not in Backpack either")
-            return
         end
     end
 
     if weightTool and weightTool:IsA("Tool") then
-        addLog("FastWeight", "Weight tool found - trying click methods")
-
         if mouse1click then
             mouse1click()
-            addLog("FastWeight", "mouse1click() executed")
         elseif mouse1press then
             mouse1press()
             task.wait(0.001)
             mouse1release()
-            addLog("FastWeight", "mouse1press/release executed")
         else
             weightTool:Activate()
-            addLog("FastWeight", "Tool:Activate() fallback executed")
         end
-    else
-        addLog("FastWeight", "ERROR: weightTool exists but is not a Tool")
     end
 
     lastFastWeightFire = tick()
@@ -1868,56 +1988,41 @@ connections.autoDurability = RunService.Heartbeat:Connect(function()
     end
 end)
 
-connections.autoRebirth = RunService.Heartbeat:Connect(function()
-    if not settings.autoRebirth then
-        return
-    end
+connections.autoRebirth = task.spawn(function()
+    while task.wait(5) do
+        if not settings.autoRebirth then continue end
 
-    addLog("AutoRebirth", "Loop running - setting is ON")
+        local playerGui = player:WaitForChild("PlayerGui", 1)
+        if not playerGui then continue end
 
-    if tick() - lastAutoRebirthFire < 5 then
-        return
-    end
+        local foundButton = false
 
-    addLog("AutoRebirth", "Cooldown passed (5s) - scanning PlayerGui")
+        for _, gui in pairs(playerGui:GetDescendants()) do
+            if gui:IsA("TextButton") or gui:IsA("ImageButton") then
+                local text = gui.Text and gui.Text:lower() or ""
+                local name = gui.Name:lower()
 
-    local playerGui = player:WaitForChild("PlayerGui")
-    local buttonsFound = 0
-    local buttonsFired = 0
-
-    for _, gui in pairs(playerGui:GetDescendants()) do
-        if gui:IsA("TextButton") or gui:IsA("ImageButton") then
-            buttonsFound = buttonsFound + 1
-
-            local text = gui.Text and gui.Text:lower() or ""
-            local name = gui.Name:lower()
-
-            if string.find(text, "rebirth") or string.find(text, "prestige") or string.find(name, "rebirth") or string.find(name, "prestige") then
-                addLog("AutoRebirth", "Found potential button: " .. gui.Name .. " | Text: " .. (gui.Text or "NONE"))
-
-                if gui.Visible and gui.Parent and gui.Parent.Visible then
-                    addLog("AutoRebirth", "Button is visible - attempting to fire")
-
-                    if firesignal then
-                        firesignal(gui.MouseButton1Click)
-                        addLog("AutoRebirth", "firesignal() executed on: " .. gui.Name)
-                    else
-                        gui.MouseButton1Click:Fire()
-                        addLog("AutoRebirth", "MouseButton1Click:Fire() executed on: " .. gui.Name)
+                if (string.find(text, "rebirth") or string.find(text, "prestige") or string.find(name, "rebirth") or string.find(name, "prestige")) then
+                    if gui.Visible and gui.Parent and gui.Parent.Visible then
+                        pcall(function()
+                            if firesignal then
+                                firesignal(gui.MouseButton1Click)
+                            else
+                                gui.MouseButton1Click:Fire()
+                            end
+                        end)
+                        addLog("AutoRebirth", "Clicked: " .. (gui.Text or gui.Name))
+                        foundButton = true
+                        break
                     end
-
-                    buttonsFired = buttonsFired + 1
-                    lastAutoRebirthFire = tick()
-                    return
-                else
-                    addLog("AutoRebirth", "Button exists but NOT visible - skipping")
                 end
             end
         end
-    end
 
-    addLog("AutoRebirth", "Scan complete - Total buttons: " .. buttonsFound .. " | Fired: " .. buttonsFired)
-    lastAutoRebirthFire = tick()
+        if not foundButton then
+            addLog("AutoRebirth", "No visible rebirth button found")
+        end
+    end
 end)
 
 connections.badAuraFarm = RunService.Heartbeat:Connect(function()
