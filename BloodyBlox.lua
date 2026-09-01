@@ -1,4 +1,4 @@
--- BloodyBlox Beta 0.0.6b (Hotfix: CoreGui crash fix)
+-- BloodyBlox v0.5.8 (2026-09-01) - Major fixes: AntiAim, Fly, InfJump, Walk/Air/Fast Strafe
 
 repeat task.wait() until game:IsLoaded()
 repeat task.wait() until game.Players.LocalPlayer
@@ -137,6 +137,26 @@ local function loadConfig(name)
             end
         end
         addLog("Config", "Loaded: " .. name)
+
+        -- Apply loaded settings to UI (update all toggles/sliders)
+        task.wait(0.1)
+        for _, obj in pairs(screenGui:GetDescendants()) do
+            if obj:IsA("TextButton") and obj.Name == "ToggleButton" then
+                local settingKey = obj:GetAttribute("SettingKey")
+                if settingKey and settings[settingKey] ~= nil then
+                    local indicator = obj:FindFirstChild("Indicator")
+                    if indicator then
+                        indicator.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                    end
+                end
+            elseif obj:IsA("TextBox") and obj.Name == "SliderInput" then
+                local settingKey = obj:GetAttribute("SettingKey")
+                if settingKey and settings[settingKey] ~= nil then
+                    obj.Text = tostring(settings[settingKey])
+                end
+            end
+        end
+
         return true
     end
     return false
@@ -661,16 +681,23 @@ topBar.InputEnded:Connect(function(input)
     end
 end)
 
-local tabFrame = Instance.new("Frame")
+local tabFrame = Instance.new("ScrollingFrame")
 tabFrame.Size = UDim2.new(0, 150, 1, -50)
 tabFrame.Position = UDim2.new(0, 5, 0, 45)
 tabFrame.BackgroundTransparency = 1
+tabFrame.BorderSizePixel = 0
+tabFrame.ScrollBarThickness = 4
+tabFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
 tabFrame.Parent = mainFrame
 
 local tabList = Instance.new("UIListLayout")
 tabList.SortOrder = Enum.SortOrder.LayoutOrder
 tabList.Padding = UDim.new(0, 5)
 tabList.Parent = tabFrame
+
+tabList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    tabFrame.CanvasSize = UDim2.new(0, 0, 0, tabList.AbsoluteContentSize.Y + 10)
+end)
 
 local contentFrame = Instance.new("Frame")
 contentFrame.Size = UDim2.new(1, -165, 1, -50)
@@ -760,6 +787,7 @@ local function createToggle(parent, text, settingKey, callback)
     label.Parent = toggleFrame
 
     local toggle = Instance.new("TextButton")
+    toggle.Name = "ToggleButton"
     toggle.Size = UDim2.new(0, 50, 0, 20)
     toggle.Position = UDim2.new(1, -60, 0.5, -10)
     toggle.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(50, 255, 50) or Color3.fromRGB(255, 50, 50)
@@ -769,6 +797,15 @@ local function createToggle(parent, text, settingKey, callback)
     toggle.TextSize = 12
     toggle.Font = Enum.Font.GothamBold
     toggle.Parent = toggleFrame
+    toggle:SetAttribute("SettingKey", settingKey)
+
+    local indicator = Instance.new("Frame")
+    indicator.Name = "Indicator"
+    indicator.Size = UDim2.new(1, 0, 1, 0)
+    indicator.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    indicator.BackgroundTransparency = 0.7
+    indicator.BorderSizePixel = 0
+    indicator.Parent = toggle
 
     local toggleButtonCorner = Instance.new("UICorner")
     toggleButtonCorner.CornerRadius = UDim.new(0, 4)
@@ -778,8 +815,129 @@ local function createToggle(parent, text, settingKey, callback)
         settings[settingKey] = not settings[settingKey]
         toggle.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(50, 255, 50) or Color3.fromRGB(255, 50, 50)
         toggle.Text = settings[settingKey] and "ON" or "OFF"
+        indicator.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
         if callback then callback(settings[settingKey]) end
     end)
+
+    -- Context Menu for Anti-Aim (Right Click)
+    if settingKey == "antiAim" then
+        toggle.MouseButton2Click:Connect(function()
+            local contextMenu = Instance.new("Frame")
+            contextMenu.Size = UDim2.new(0, 200, 0, 150)
+            contextMenu.Position = UDim2.new(0.5, -100, 0.5, -75)
+            contextMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            contextMenu.BorderSizePixel = 2
+            contextMenu.BorderColor3 = Color3.fromRGB(255, 50, 50)
+            contextMenu.ZIndex = 999
+            contextMenu.Parent = screenGui
+
+            local contextCorner = Instance.new("UICorner")
+            contextCorner.CornerRadius = UDim.new(0, 8)
+            contextCorner.Parent = contextMenu
+
+            local contextTitle = Instance.new("TextLabel")
+            contextTitle.Size = UDim2.new(1, 0, 0, 30)
+            contextTitle.BackgroundTransparency = 1
+            contextTitle.Text = "Anti-Aim Settings"
+            contextTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            contextTitle.TextSize = 16
+            contextTitle.Font = Enum.Font.GothamBold
+            contextTitle.Parent = contextMenu
+
+            local speedLabel = Instance.new("TextLabel")
+            speedLabel.Size = UDim2.new(1, -20, 0, 20)
+            speedLabel.Position = UDim2.new(0, 10, 0, 40)
+            speedLabel.BackgroundTransparency = 1
+            speedLabel.Text = "Speed: " .. settings.antiAimSpeed
+            speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            speedLabel.TextSize = 14
+            speedLabel.Font = Enum.Font.Gotham
+            speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+            speedLabel.Parent = contextMenu
+
+            local speedSlider = Instance.new("TextBox")
+            speedSlider.Size = UDim2.new(1, -20, 0, 25)
+            speedSlider.Position = UDim2.new(0, 10, 0, 65)
+            speedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            speedSlider.Text = tostring(settings.antiAimSpeed)
+            speedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+            speedSlider.TextSize = 14
+            speedSlider.Font = Enum.Font.Gotham
+            speedSlider.ClearTextOnFocus = false
+            speedSlider.Parent = contextMenu
+
+            local speedCorner = Instance.new("UICorner")
+            speedCorner.CornerRadius = UDim.new(0, 4)
+            speedCorner.Parent = speedSlider
+
+            speedSlider.FocusLost:Connect(function()
+                local value = tonumber(speedSlider.Text) or 5
+                value = math.clamp(value, 1, 10)
+                settings.antiAimSpeed = value
+                speedLabel.Text = "Speed: " .. value
+                speedSlider.Text = tostring(value)
+            end)
+
+            local typeLabel = Instance.new("TextLabel")
+            typeLabel.Size = UDim2.new(1, -20, 0, 20)
+            typeLabel.Position = UDim2.new(0, 10, 0, 95)
+            typeLabel.BackgroundTransparency = 1
+            typeLabel.Text = "Type: " .. settings.antiAimType
+            typeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            typeLabel.TextSize = 14
+            typeLabel.Font = Enum.Font.Gotham
+            typeLabel.TextXAlignment = Enum.TextXAlignment.Left
+            typeLabel.Parent = contextMenu
+
+            local typeDropdown = Instance.new("TextButton")
+            typeDropdown.Size = UDim2.new(1, -20, 0, 25)
+            typeDropdown.Position = UDim2.new(0, 10, 0, 120)
+            typeDropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            typeDropdown.Text = settings.antiAimType .. " ▼"
+            typeDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+            typeDropdown.TextSize = 14
+            typeDropdown.Font = Enum.Font.Gotham
+            typeDropdown.Parent = contextMenu
+
+            local typeCorner = Instance.new("UICorner")
+            typeCorner.CornerRadius = UDim.new(0, 4)
+            typeCorner.Parent = typeDropdown
+
+            local types = {"Static", "Jitter", "Spin", "Random"}
+            local currentIndex = 1
+            for i, t in ipairs(types) do
+                if t == settings.antiAimType then
+                    currentIndex = i
+                    break
+                end
+            end
+
+            typeDropdown.MouseButton1Click:Connect(function()
+                currentIndex = (currentIndex % #types) + 1
+                settings.antiAimType = types[currentIndex]
+                typeDropdown.Text = settings.antiAimType .. " ▼"
+                typeLabel.Text = "Type: " .. settings.antiAimType
+            end)
+
+            local closeButton = Instance.new("TextButton")
+            closeButton.Size = UDim2.new(0, 20, 0, 20)
+            closeButton.Position = UDim2.new(1, -25, 0, 5)
+            closeButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            closeButton.Text = "X"
+            closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            closeButton.TextSize = 14
+            closeButton.Font = Enum.Font.GothamBold
+            closeButton.Parent = contextMenu
+
+            local closeCorner = Instance.new("UICorner")
+            closeCorner.CornerRadius = UDim.new(0, 4)
+            closeCorner.Parent = closeButton
+
+            closeButton.MouseButton1Click:Connect(function()
+                contextMenu:Destroy()
+            end)
+        end)
+    end
 
     return toggleFrame
 end
@@ -1017,7 +1175,7 @@ createToggle(farmTab, "Auto Rebirth", "autoRebirth")
 local combatTab = createTab("Combat")
 createToggle(combatTab, "Anti-Aim", "antiAim")
 createSlider(combatTab, "Anti-Aim Speed", "antiAimSpeed", 1, 10)
-createDropdown(combatTab, "Anti-Aim Type", "antiAimType", {"Static", "Jitter", "Spin", "Random", "Desync", "FakeYaw", "FakeLag", "Freestanding", "ManualAA", "EdgeAA"})
+createDropdown(combatTab, "Anti-Aim Type", "antiAimType", {"Static", "Jitter", "Spin", "Random"})
 createToggle(combatTab, "Kill Aura", "killAura", function(enabled)
     if enabled then
         cacheRemotes({"punch", "attack", "hit", "combat"}, cachedAttackRemotes)
@@ -1333,25 +1491,6 @@ createButton(analyzerTab, "6. State Desync Test", function()
     addLog("Analyzer", "Check game state for unexpected results")
     addLog("Analyzer", "If any test triggered server action - possible vulnerability")
 end)
-        addLog("Analyzer", "No capture profile loaded")
-        return
-    end
-    for _, remote in ipairs(capturedRemotes) do
-        local remoteObj = game:GetService(remote.path or "ReplicatedStorage")
-        for _, part in pairs(remote.name:split(".")) do
-            remoteObj = remoteObj:FindFirstChild(part)
-            if not remoteObj then break end
-        end
-        if remoteObj then
-            if remote.method == "FireServer" then
-                remoteObj:FireServer(unpack(remote.args or {}))
-            elseif remote.method == "InvokeServer" then
-                remoteObj:InvokeServer(unpack(remote.args or {}))
-            end
-            addLog("Analyzer", "Replayed: " .. remote.name)
-        end
-    end
-end)
 createButton(analyzerTab, "Save Profile", function()
     if #capturedRemotes == 0 then
         addLog("Analyzer", "No remotes captured")
@@ -1361,6 +1500,99 @@ createButton(analyzerTab, "Save Profile", function()
     writefile("bloodyblox_capture.json", profile)
     addLog("Analyzer", "Saved " .. #capturedRemotes .. " remotes")
     captureActive = false
+end)
+
+-- Specialized scans for AutoRebirth development
+createButton(analyzerTab, "Scan Rebirth Triggers", function()
+    addLog("Analyzer", "=== REBIRTH TRIGGER SCAN ===")
+
+    local found = {}
+
+    -- Scan ProximityPrompts
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            local name = obj.Name:lower()
+            local parent = obj.Parent and obj.Parent.Name or "unknown"
+            if name:find("rebirth") or name:find("prestige") or name:find("reset") or parent:lower():find("rebirth") then
+                table.insert(found, {type = "ProximityPrompt", path = obj:GetFullName(), name = obj.Name})
+                addLog("Analyzer", "[ProximityPrompt] " .. obj:GetFullName())
+            end
+        end
+    end
+
+    -- Scan ClickDetectors
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("ClickDetector") then
+            local parent = obj.Parent and obj.Parent.Name or "unknown"
+            if parent:lower():find("rebirth") or parent:lower():find("prestige") then
+                table.insert(found, {type = "ClickDetector", path = obj:GetFullName(), parent = parent})
+                addLog("Analyzer", "[ClickDetector] " .. obj:GetFullName())
+            end
+        end
+    end
+
+    -- Scan RemoteEvents
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local name = obj.Name:lower()
+            if name:find("rebirth") or name:find("prestige") then
+                table.insert(found, {type = obj.ClassName, path = obj:GetFullName(), name = obj.Name})
+                addLog("Analyzer", "[" .. obj.ClassName .. "] " .. obj:GetFullName())
+            end
+        end
+    end
+
+    _G.BloodyBloxRebirthTriggers = found
+    addLog("Analyzer", string.format("=== FOUND %d REBIRTH TRIGGERS ===", #found))
+    addLog("Analyzer", "Now: Turn ON Remote Spy, manually do rebirth, check Logs")
+end)
+
+createButton(analyzerTab, "Scan Attack Remotes", function()
+    addLog("Analyzer", "=== ATTACK REMOTE SCAN ===")
+
+    local found = {}
+    local keywords = {"punch", "hit", "attack", "damage", "combat", "fight", "strike"}
+
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local name = obj.Name:lower()
+            for _, keyword in ipairs(keywords) do
+                if name:find(keyword) then
+                    table.insert(found, {type = obj.ClassName, path = obj:GetFullName(), name = obj.Name})
+                    addLog("Analyzer", "[" .. obj.ClassName .. "] " .. obj:GetFullName())
+                    break
+                end
+            end
+        end
+    end
+
+    _G.BloodyBloxAttackRemotes = found
+    addLog("Analyzer", string.format("=== FOUND %d ATTACK REMOTES ===", #found))
+    addLog("Analyzer", "Now: Turn ON Remote Spy, manually attack, check Logs")
+end)
+
+createButton(analyzerTab, "Scan Weight/Dura Remotes", function()
+    addLog("Analyzer", "=== WEIGHT/DURABILITY REMOTE SCAN ===")
+
+    local found = {weight = {}, durability = {}}
+
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local name = obj.Name:lower()
+            if name:find("weight") or name:find("lift") or name:find("strength") then
+                table.insert(found.weight, {type = obj.ClassName, path = obj:GetFullName(), name = obj.Name})
+                addLog("Analyzer", "[WEIGHT] " .. obj:GetFullName())
+            end
+            if name:find("durability") or name:find("defense") or name:find("endurance") then
+                table.insert(found.durability, {type = obj.ClassName, path = obj:GetFullName(), name = obj.Name})
+                addLog("Analyzer", "[DURA] " .. obj:GetFullName())
+            end
+        end
+    end
+
+    _G.BloodyBloxWeightDuraRemotes = found
+    addLog("Analyzer", string.format("=== FOUND %d WEIGHT + %d DURA REMOTES ===", #found.weight, #found.durability))
+    addLog("Analyzer", "Now: Turn ON Remote Spy, manually lift/train, check Logs")
 end)
 
 local miscTab = createTab("Misc")
@@ -1476,12 +1708,12 @@ createToggle(visualTab, "ESP", "espEnabled", function(enabled)
         clearESP()
     end
 end)
-createToggle(visualTab, "ESP Boxes", "espBoxes")
-createToggle(visualTab, "ESP Names", "espNames")
-createToggle(visualTab, "ESP Distance", "espDistance")
-createToggle(visualTab, "ESP Health", "espHealth")
-createToggle(visualTab, "ESP Tracers", "espTracers")
-createToggle(visualTab, "ESP Team Check", "espTeamCheck")
+createToggle(visualTab, "Boxes", "espBoxes")
+createToggle(visualTab, "Names", "espNames")
+createToggle(visualTab, "Distance", "espDistance")
+createToggle(visualTab, "Health", "espHealth")
+createToggle(visualTab, "Tracers", "espTracers")
+createToggle(visualTab, "Team Check", "espTeamCheck")
 createToggle(visualTab, "Fullbright", "fullbright", function(enabled)
     if enabled then
         originalLightingSettings = {
@@ -1503,6 +1735,23 @@ createToggle(visualTab, "Fullbright", "fullbright", function(enabled)
     end
 end)
 
+local function getFlySpeed(sliderValue)
+    -- x2 multiplier: 1→2, 10→20, 20→40, 50→100
+    -- 1-10: +2 b/s (1→2, 10→20)
+    -- 11-15: +4 b/s (11→24, 15→40)
+    -- 16-19: +10 b/s (16→50, 19→80)
+    -- 20: 100 b/s
+    if sliderValue <= 10 then
+        return sliderValue * 2
+    elseif sliderValue <= 15 then
+        return 20 + (sliderValue - 10) * 4
+    elseif sliderValue <= 19 then
+        return 40 + (sliderValue - 15) * 10
+    else
+        return 100
+    end
+end
+
 local playerTab = createTab("Player")
 createToggle(playerTab, "Fly", "fly", function(enabled)
     if enabled then
@@ -1516,24 +1765,25 @@ createToggle(playerTab, "Fly", "fly", function(enabled)
 
             local camera = workspace.CurrentCamera
             local direction = Vector3.new(0, 0, 0)
+            local actualSpeed = getFlySpeed(settings.flySpeed)
 
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                direction = direction + (camera.CFrame.LookVector * settings.flySpeed * 10)
+                direction = direction + (camera.CFrame.LookVector * actualSpeed)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                direction = direction - (camera.CFrame.LookVector * settings.flySpeed * 10)
+                direction = direction - (camera.CFrame.LookVector * actualSpeed)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                direction = direction - (camera.CFrame.RightVector * settings.flySpeed * 10)
+                direction = direction - (camera.CFrame.RightVector * actualSpeed)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                direction = direction + (camera.CFrame.RightVector * settings.flySpeed * 10)
+                direction = direction + (camera.CFrame.RightVector * actualSpeed)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                direction = direction + Vector3.new(0, settings.flySpeed * 10, 0)
+                direction = direction + Vector3.new(0, actualSpeed, 0)
             end
             if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                direction = direction - Vector3.new(0, settings.flySpeed * 10, 0)
+                direction = direction - Vector3.new(0, actualSpeed, 0)
             end
 
             bodyVelocity.Velocity = direction
@@ -1545,7 +1795,7 @@ createToggle(playerTab, "Fly", "fly", function(enabled)
         end
     end
 end)
-createSlider(playerTab, "Fly Speed", "flySpeed", 1, 10)
+createSlider(playerTab, "Fly Speed", "flySpeed", 1, 20)
 createToggle(playerTab, "Noclip", "noclip", function(enabled)
     if enabled then
         for _, part in pairs(character:GetDescendants()) do
@@ -1829,8 +2079,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 
     if input.KeyCode == Enum.KeyCode.Space and settings.infiniteJump then
-        if humanoid.FloorMaterial == Enum.Material.Air or humanoid:GetState() == Enum.HumanoidStateType.Freefall or humanoid:GetState() == Enum.HumanoidStateType.Jumping then
-            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        if humanoid and humanoid:GetState() ~= Enum.HumanoidStateType.Seated then
+            -- Force jump by manipulating velocity
+            if rootPart then
+                local currentVel = rootPart.Velocity
+                rootPart.Velocity = Vector3.new(currentVel.X, 50, currentVel.Z)
+            end
         end
     end
 end)
@@ -1846,25 +2100,14 @@ connections.antiAim = RunService.RenderStepped:Connect(function()
     if not settings.antiAim or not rootPart then return end
 
     local speed = settings.antiAimSpeed
+    local currentCFrame = rootPart.CFrame
     local currentVelocity = rootPart.Velocity
-    local position = rootPart.Position
 
     local modes = {
-        Static = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 10), 0) end,
-        Jitter = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 10 * (math.random() > 0.5 and 1 or -1)), 0) end,
-        Spin = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(tick() * speed * 50), 0) end,
-        Random = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(math.random(-180, 180)), 0) end,
-        Desync = function() return CFrame.new(position) * CFrame.Angles(0, math.sin(tick() * speed) * math.pi, 0) end,
-        FakeYaw = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(180), 0) end,
-        FakeLag = function()
-            if math.floor(tick() * 2) % 2 == 0 then
-                return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 36), 0)
-            end
-            return rootPart.CFrame
-        end,
-        Freestanding = function() return CFrame.new(position) * CFrame.Angles(0, math.cos(tick() * speed) * math.pi, 0) end,
-        ManualAA = function() return CFrame.new(position) * CFrame.Angles(0, math.rad(speed * 20), 0) end,
-        EdgeAA = function() return CFrame.new(position) * CFrame.Angles(0, math.sin(tick() * speed * 2) * math.pi / 2, 0) end
+        Static = function() return currentCFrame * CFrame.Angles(0, math.rad(speed * 10), 0) end,
+        Jitter = function() return currentCFrame * CFrame.Angles(0, math.rad(speed * 10 * (math.random() > 0.5 and 1 or -1)), 0) end,
+        Spin = function() return currentCFrame * CFrame.Angles(0, math.rad(tick() * speed * 100), 0) end,
+        Random = function() return currentCFrame * CFrame.Angles(0, math.rad(math.random(-180, 180)), 0) end
     }
 
     local mode = modes[settings.antiAimType]
@@ -2064,20 +2307,28 @@ connections.badAuraFarm = RunService.Heartbeat:Connect(function()
 end)
 
 connections.walkWithDumbbell = RunService.Heartbeat:Connect(function()
-    if not settings.walkWithDumbbell then return end
-    if humanoid then
-        humanoid.WalkSpeed = settings.walkSpeed
+    if not settings.walkWithDumbbell or not humanoid then return end
+    humanoid.WalkSpeed = 50
+end)
+
+-- Walk With Dumbbell jump support (задача #6)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Space and settings.walkWithDumbbell and humanoid then
+        if rootPart and humanoid:GetState() ~= Enum.HumanoidStateType.Seated then
+            local currentVel = rootPart.Velocity
+            rootPart.Velocity = Vector3.new(currentVel.X, 50, currentVel.Z)
+        end
     end
 end)
 
 connections.fastStrafe = RunService.Heartbeat:Connect(function()
-    if not settings.fastStrafe or not humanoid then return end
+    if not settings.fastStrafe or not humanoid or not rootPart then return end
 
-    local moveDirection = humanoid.MoveDirection
-    if moveDirection.Magnitude > 0 then
-        local camera = workspace.CurrentCamera
-        local cameraCFrame = CFrame.new(rootPart.Position, rootPart.Position + Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z))
-        rootPart.CFrame = CFrame.new(rootPart.Position, rootPart.Position + moveDirection)
+    -- Remove movement inertia by zeroing horizontal velocity when not moving
+    if humanoid.MoveDirection.Magnitude == 0 then
+        local currentVel = rootPart.Velocity
+        rootPart.Velocity = Vector3.new(0, currentVel.Y, 0)
     end
 end)
 
@@ -2088,7 +2339,7 @@ connections.antiRagdoll = RunService.Stepped:Connect(function()
 end)
 
 connections.airStrafe = RunService.RenderStepped:Connect(function()
-    if not settings.airStrafe or not humanoid then return end
+    if not settings.airStrafe or not humanoid or not rootPart then return end
     if humanoid.FloorMaterial == Enum.Material.Air then
         local camera = workspace.CurrentCamera
         local direction = Vector3.new(0, 0, 0)
@@ -2108,14 +2359,14 @@ connections.airStrafe = RunService.RenderStepped:Connect(function()
 
         if direction.Magnitude > 0 then
             local currentVelocity = rootPart.Velocity
-            local strafeForce = direction.Unit * settings.airStrafeSpeed
+            local strafeForce = direction.Unit * 2.5  -- Increased from ~1 to 2.5
             local newHorizontalVelocity = Vector3.new(
                 currentVelocity.X + strafeForce.X,
                 0,
                 currentVelocity.Z + strafeForce.Z
             )
 
-            local maxSpeed = settings.airStrafeSpeed
+            local maxSpeed = 100  -- Increased from airStrafeSpeed (30) to 100
             if newHorizontalVelocity.Magnitude > maxSpeed then
                 newHorizontalVelocity = newHorizontalVelocity.Unit * maxSpeed
             end
