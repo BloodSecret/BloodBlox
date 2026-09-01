@@ -1,4 +1,4 @@
--- BloodyBlox v0.5.8 (2026-09-01) - Major fixes: AntiAim, Fly, InfJump, Walk/Air/Fast Strafe
+-- BloodyBlox v0.5.11 (2026-09-01) - Teleport Rename, AntiAim Context Menu Fix, Config Load UI Fix
 
 repeat task.wait() until game:IsLoaded()
 repeat task.wait() until game.Players.LocalPlayer
@@ -144,6 +144,11 @@ local function loadConfig(name)
             if obj:IsA("TextButton") and obj.Name == "ToggleButton" then
                 local settingKey = obj:GetAttribute("SettingKey")
                 if settingKey and settings[settingKey] ~= nil then
+                    -- Update toggle button visual state
+                    obj.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(50, 255, 50) or Color3.fromRGB(255, 50, 50)
+                    obj.Text = settings[settingKey] and "ON" or "OFF"
+
+                    -- Update indicator
                     local indicator = obj:FindFirstChild("Indicator")
                     if indicator then
                         indicator.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
@@ -821,7 +826,10 @@ local function createToggle(parent, text, settingKey, callback)
 
     -- Context Menu for Anti-Aim (Right Click)
     if settingKey == "antiAim" then
-        toggle.MouseButton2Click:Connect(function()
+        local uis = game:GetService("UserInputService")
+
+        toggle.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton2 then
             local contextMenu = Instance.new("Frame")
             contextMenu.Size = UDim2.new(0, 200, 0, 150)
             contextMenu.Position = UDim2.new(0.5, -100, 0.5, -75)
@@ -936,8 +944,9 @@ local function createToggle(parent, text, settingKey, callback)
             closeButton.MouseButton1Click:Connect(function()
                 contextMenu:Destroy()
             end)
-        end)
-    end
+            end -- closes if input.UserInputType == MouseButton2
+        end) -- closes toggle.InputBegan:Connect
+    end -- closes if settingKey == "antiAim"
 
     return toggleFrame
 end
@@ -1924,9 +1933,112 @@ local function refreshTeleportList()
             addLog("Teleport", "Teleported to: " .. point.name)
         end)
 
+        local renameButton = Instance.new("TextButton")
+        renameButton.Size = UDim2.new(0.2, 0, 0.8, 0)
+        renameButton.Position = UDim2.new(0.5, 0, 0.1, 0)
+        renameButton.BackgroundColor3 = Color3.fromRGB(255, 150, 50)
+        renameButton.BorderSizePixel = 0
+        renameButton.Text = "Rename"
+        renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        renameButton.TextSize = 11
+        renameButton.Font = Enum.Font.GothamBold
+        renameButton.Parent = pointFrame
+
+        local renameCorner = Instance.new("UICorner")
+        renameCorner.CornerRadius = UDim.new(0, 4)
+        renameCorner.Parent = renameButton
+
+        renameButton.MouseButton1Click:Connect(function()
+            local renameFrame = Instance.new("Frame")
+            renameFrame.Size = UDim2.new(0, 300, 0, 100)
+            renameFrame.Position = UDim2.new(0.5, -150, 0.5, -50)
+            renameFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            renameFrame.BorderSizePixel = 2
+            renameFrame.BorderColor3 = Color3.fromRGB(255, 150, 50)
+            renameFrame.ZIndex = 999
+            renameFrame.Parent = screenGui
+
+            local renameFrameCorner = Instance.new("UICorner")
+            renameFrameCorner.CornerRadius = UDim.new(0, 8)
+            renameFrameCorner.Parent = renameFrame
+
+            local renameTitle = Instance.new("TextLabel")
+            renameTitle.Size = UDim2.new(1, 0, 0, 25)
+            renameTitle.BackgroundTransparency = 1
+            renameTitle.Text = "Rename Teleport Point"
+            renameTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            renameTitle.TextSize = 14
+            renameTitle.Font = Enum.Font.GothamBold
+            renameTitle.Parent = renameFrame
+
+            local renameInput = Instance.new("TextBox")
+            renameInput.Size = UDim2.new(0.9, 0, 0, 30)
+            renameInput.Position = UDim2.new(0.05, 0, 0, 35)
+            renameInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            renameInput.Text = point.name
+            renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            renameInput.TextSize = 14
+            renameInput.Font = Enum.Font.Gotham
+            renameInput.ClearTextOnFocus = true
+            renameInput.Parent = renameFrame
+
+            local renameInputCorner = Instance.new("UICorner")
+            renameInputCorner.CornerRadius = UDim.new(0, 4)
+            renameInputCorner.Parent = renameInput
+
+            local confirmButton = Instance.new("TextButton")
+            confirmButton.Size = UDim2.new(0.4, 0, 0, 25)
+            confirmButton.Position = UDim2.new(0.05, 0, 0, 70)
+            confirmButton.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
+            confirmButton.Text = "Confirm"
+            confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            confirmButton.TextSize = 12
+            confirmButton.Font = Enum.Font.GothamBold
+            confirmButton.Parent = renameFrame
+
+            local confirmCorner = Instance.new("UICorner")
+            confirmCorner.CornerRadius = UDim.new(0, 4)
+            confirmCorner.Parent = confirmButton
+
+            confirmButton.MouseButton1Click:Connect(function()
+                local newName = renameInput.Text
+                if newName and newName ~= "" then
+                    point.name = newName
+                    saveTeleportPoints()
+                    refreshTeleportList()
+                    addLog("Teleport", "Renamed to: " .. newName)
+                end
+                renameFrame:Destroy()
+            end)
+
+            local cancelButton = Instance.new("TextButton")
+            cancelButton.Size = UDim2.new(0.4, 0, 0, 25)
+            cancelButton.Position = UDim2.new(0.55, 0, 0, 70)
+            cancelButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            cancelButton.Text = "Cancel"
+            cancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            cancelButton.TextSize = 12
+            cancelButton.Font = Enum.Font.GothamBold
+            cancelButton.Parent = renameFrame
+
+            local cancelCorner = Instance.new("UICorner")
+            cancelCorner.CornerRadius = UDim.new(0, 4)
+            cancelCorner.Parent = cancelButton
+
+            cancelButton.MouseButton1Click:Connect(function()
+                renameFrame:Destroy()
+            end)
+        end)
+
+        -- Adjust positions for 3 buttons layout
+        tpButton.Size = UDim2.new(0.18, 0, 0.8, 0)
+        tpButton.Position = UDim2.new(0.42, 0, 0.1, 0)
+        renameButton.Size = UDim2.new(0.18, 0, 0.8, 0)
+        renameButton.Position = UDim2.new(0.62, 0, 0.1, 0)
+
         local deleteButton = Instance.new("TextButton")
-        deleteButton.Size = UDim2.new(0.25, 0, 0.8, 0)
-        deleteButton.Position = UDim2.new(0.72, 0, 0.1, 0)
+        deleteButton.Size = UDim2.new(0.18, 0, 0.8, 0)
+        deleteButton.Position = UDim2.new(0.82, 0, 0.1, 0)
         deleteButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
         deleteButton.BorderSizePixel = 0
         deleteButton.Text = "Delete"
@@ -2118,7 +2230,13 @@ connections.antiAim = RunService.RenderStepped:Connect(function()
 end)
 
 connections.killAura = RunService.Heartbeat:Connect(function()
-    if not settings.killAura or #cachedAttackRemotes == 0 then return end
+    if not settings.killAura then return end
+
+    -- Direct remote call (from logs: ReplicatedStorage.rEvents.guiDamageEvent)
+    local damageRemote = ReplicatedStorage:FindFirstChild("rEvents")
+        and ReplicatedStorage.rEvents:FindFirstChild("guiDamageEvent")
+
+    if not damageRemote then return end
 
     if tick() - lastPlayerCacheUpdate > 1 then
         cachedPlayers = Players:GetPlayers()
@@ -2131,11 +2249,9 @@ connections.killAura = RunService.Heartbeat:Connect(function()
             if not lastKillAuraFire[targetId] or tick() - lastKillAuraFire[targetId] > 0.5 then
                 local distance = (rootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude
                 if distance < settings.killAuraRange then
-                    for _, remote in pairs(cachedAttackRemotes) do
-                        pcall(function()
-                            remote:FireServer(v.Character.HumanoidRootPart)
-                        end)
-                    end
+                    pcall(function()
+                        damageRemote:FireServer(v.Character.HumanoidRootPart)
+                    end)
                     lastKillAuraFire[targetId] = tick()
                     break
                 end
@@ -2234,35 +2350,28 @@ connections.autoRebirth = task.spawn(function()
     while task.wait(5) do
         if not settings.autoRebirth then continue end
 
-        local playerGui = player:WaitForChild("PlayerGui", 1)
-        if not playerGui then continue end
+        -- Direct RemoteFunction call (from logs: ReplicatedStorage.rEvents.rebirthRemote)
+        local rebirthRemote = ReplicatedStorage:FindFirstChild("rEvents")
+            and ReplicatedStorage.rEvents:FindFirstChild("rebirthRemote")
 
-        local foundButton = false
+        if rebirthRemote and rebirthRemote:IsA("RemoteFunction") then
+            local success, result = pcall(function()
+                return rebirthRemote:InvokeServer()
+            end)
 
-        for _, gui in pairs(playerGui:GetDescendants()) do
-            if gui:IsA("TextButton") or gui:IsA("ImageButton") then
-                local text = gui.Text and gui.Text:lower() or ""
-                local name = gui.Name:lower()
-
-                if (string.find(text, "rebirth") or string.find(text, "prestige") or string.find(name, "rebirth") or string.find(name, "prestige")) then
-                    if gui.Visible and gui.Parent and gui.Parent.Visible then
-                        pcall(function()
-                            if firesignal then
-                                firesignal(gui.MouseButton1Click)
-                            else
-                                gui.MouseButton1Click:Fire()
-                            end
-                        end)
-                        addLog("AutoRebirth", "Clicked: " .. (gui.Text or gui.Name))
-                        foundButton = true
-                        break
-                    end
+            if success then
+                if result == true or result == nil then
+                    addLog("AutoRebirth", "Rebirth successful")
+                    task.wait(2)
+                else
+                    addLog("AutoRebirth", "Rebirth failed: " .. tostring(result))
                 end
+            else
+                addLog("AutoRebirth", "Error: " .. tostring(result))
             end
-        end
-
-        if not foundButton then
-            addLog("AutoRebirth", "No visible rebirth button found")
+        else
+            addLog("AutoRebirth", "ERROR: rebirthRemote not found in ReplicatedStorage.rEvents")
+            task.wait(10)
         end
     end
 end)
