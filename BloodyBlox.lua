@@ -1,4 +1,4 @@
--- BloodyBlox v0.5.10
+-- BloodyBlox Beta 0.0.6b (Hotfix: CoreGui crash fix)
 
 repeat task.wait() until game:IsLoaded()
 repeat task.wait() until game.Players.LocalPlayer
@@ -15,7 +15,6 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:WaitForChild("Workspace")
-local CoreGui = game:GetService("CoreGui")
 local VirtualUser = game:GetService("VirtualUser")
 local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
@@ -484,7 +483,7 @@ local function installRemoteHook()
 end
 
 local function createWatermark()
-    local watermarkGui = CoreGui:FindFirstChild("BloodyBloxWatermark")
+    local watermarkGui = player:WaitForChild("PlayerGui"):FindFirstChild("BloodyBloxWatermark")
     if watermarkGui then
         watermarkGui:Destroy()
     end
@@ -493,7 +492,7 @@ local function createWatermark()
     watermarkGui.Name = "BloodyBloxWatermark"
     watermarkGui.DisplayOrder = 999
     watermarkGui.ResetOnSpawn = false
-    watermarkGui.Parent = CoreGui
+    watermarkGui.Parent = player:WaitForChild("PlayerGui")
 
     local watermark = Instance.new("Frame")
     watermark.Size = UDim2.new(0, 200, 0, 50)
@@ -577,7 +576,7 @@ end
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "BloodyBloxUI"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = CoreGui
+screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 700, 0, 500)
@@ -1773,7 +1772,7 @@ end)
 
 local settingsTab = createTab("Settings")
 createToggle(settingsTab, "Show Watermark", "showWatermark", function(enabled)
-    local watermarkGui = CoreGui:FindFirstChild("BloodyBloxWatermark")
+    local watermarkGui = player:WaitForChild("PlayerGui"):FindFirstChild("BloodyBloxWatermark")
     if watermarkGui then
         watermarkGui.Enabled = enabled
     end
@@ -1809,7 +1808,7 @@ createButton(settingsTab, "EXIT", function()
     end
     clearESP()
     screenGui:Destroy()
-    local watermarkGui = CoreGui:FindFirstChild("BloodyBloxWatermark")
+    local watermarkGui = player:WaitForChild("PlayerGui"):FindFirstChild("BloodyBloxWatermark")
     if watermarkGui then
         watermarkGui:Destroy()
     end
