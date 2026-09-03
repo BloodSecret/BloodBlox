@@ -28,8 +28,8 @@ ScreenGui.Parent = game:GetService("CoreGui")
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 595, 0, 385)
-Main.Position = UDim2.new(0.5, -297.5, 0, 20)
+Main.Size = UDim2.new(0, 500, 0, 350)
+Main.Position = UDim2.new(0.5, -250, 0, 20)
 Main.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
@@ -142,12 +142,23 @@ CloseBtn.MouseLeave:Connect(function()
     TweenService:Create(CloseBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(20, 20, 25)}):Play()
 end)
 
+local SidebarScroll = Instance.new("ScrollingFrame")
+SidebarScroll.Size = UDim2.new(0, 180, 1, -55)
+SidebarScroll.Position = UDim2.new(0, 10, 0, 50)
+SidebarScroll.BackgroundTransparency = 1
+SidebarScroll.BorderSizePixel = 0
+SidebarScroll.ScrollBarThickness = 4
+SidebarScroll.ScrollBarImageColor3 = Color3.fromRGB(139, 0, 0)
+SidebarScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+SidebarScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+SidebarScroll.ZIndex = 1
+SidebarScroll.Parent = Main
+
 local Sidebar = Instance.new("Frame")
-Sidebar.Size = UDim2.new(0, 180, 1, -55)
-Sidebar.Position = UDim2.new(0, 10, 0, 50)
+Sidebar.Size = UDim2.new(1, 0, 1, 0)
 Sidebar.BackgroundTransparency = 1
 Sidebar.ZIndex = 1
-Sidebar.Parent = Main
+Sidebar.Parent = SidebarScroll
 
 local TabList = Instance.new("UIListLayout")
 TabList.SortOrder = Enum.SortOrder.LayoutOrder
@@ -800,7 +811,7 @@ ClearButton.MouseButton1Click:Connect(function()
 end)
 
 local Config = {
-    MenuSize = 0.7,
+    MenuSize = 1.0,
     Farm = {AutoFarm = false},
     Rebirth = {AutoRebirth = false, NoRemoveTP = false, FastRebirth = false},
     Combat = {AntiAim = false, AutoKill = false},
@@ -809,8 +820,8 @@ local Config = {
 }
 
 local function GetMenuSize()
-    local baseWidth = 850
-    local baseHeight = 550
+    local baseWidth = 500
+    local baseHeight = 350
     return baseWidth * Config.MenuSize, baseHeight * Config.MenuSize
 end
 
@@ -1226,11 +1237,6 @@ local watermarkPositions = {
 }
 local currentWatermarkPos = 3
 
-AddSlider(SettingTab, "Menu Size", 50, 100, 70, function(value)
-    Config.MenuSize = value / 100
-    UpdateMenuSize()
-end)
-
 AddButton(SettingTab, "Move Watermark", function()
     currentWatermarkPos = currentWatermarkPos + 1
     if currentWatermarkPos > #watermarkPositions then
@@ -1250,6 +1256,11 @@ AddButton(SettingTab, "EXIT", function()
         if conn then conn:Disconnect() end
     end
     ScreenGui:Destroy()
+end)
+
+AddSlider(SettingTab, "Menu Size", 50, 150, 100, function(value)
+    Config.MenuSize = value / 100
+    UpdateMenuSize()
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()
