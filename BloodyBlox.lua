@@ -29,7 +29,7 @@ ScreenGui.Parent = game:GetService("CoreGui")
 local Main = Instance.new("Frame")
 Main.Name = "Main"
 Main.Size = UDim2.new(0, 850, 0, 550)
-Main.Position = UDim2.new(0.5, -425, 0.5, -275)
+Main.Position = UDim2.new(0.5, -425, 0, 20)
 Main.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
@@ -1199,6 +1199,27 @@ AddToggle(MiscTab, "Skip Egg Animation", false, function(v)
     end
 end)
 
+local watermarkPositions = {
+    {name = "Top Left", pos = UDim2.new(0, 12, 0, 12)},
+    {name = "Top Right", pos = UDim2.new(1, -212, 0, 12)},
+    {name = "Bottom Center", pos = UDim2.new(0.5, -100, 1, -54)}
+}
+local currentWatermarkPos = 3
+
+AddButton(SettingTab, "Move Watermark", function()
+    currentWatermarkPos = currentWatermarkPos + 1
+    if currentWatermarkPos > #watermarkPositions then
+        currentWatermarkPos = 1
+    end
+
+    local newPos = watermarkPositions[currentWatermarkPos]
+    TweenService:Create(Watermark, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+        Position = newPos.pos
+    }):Play()
+
+    print("[BloodyBlox] Watermark moved to: " .. newPos.name)
+end)
+
 AddButton(SettingTab, "EXIT", function()
     for _, conn in pairs(Connections) do
         if conn then conn:Disconnect() end
@@ -1209,12 +1230,12 @@ end)
 CloseBtn.MouseButton1Click:Connect(function()
     TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
         Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(0.5, 0, 0.5, 0)
+        Position = UDim2.new(0.5, 0, 0, 295)
     }):Play()
     task.wait(0.25)
     Main.Visible = false
     Main.Size = UDim2.new(0, 850, 0, 550)
-    Main.Position = UDim2.new(0.5, -425, 0.5, -275)
+    Main.Position = UDim2.new(0.5, -425, 0, 20)
 end)
 
 local dragging, dragInput, dragStart, startPos
@@ -1256,19 +1277,19 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         if Main.Visible then
             TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
                 Size = UDim2.new(0, 0, 0, 0),
-                Position = UDim2.new(0.5, 0, 0.5, 0)
+                Position = UDim2.new(0.5, 0, 0, 295)
             }):Play()
             task.wait(0.25)
             Main.Visible = false
             Main.Size = UDim2.new(0, 850, 0, 550)
-            Main.Position = UDim2.new(0.5, -425, 0.5, -275)
+            Main.Position = UDim2.new(0.5, -425, 0, 20)
         else
             Main.Visible = true
             Main.Size = UDim2.new(0, 0, 0, 0)
-            Main.Position = UDim2.new(0.5, 0, 0.5, 0)
+            Main.Position = UDim2.new(0.5, 0, 0, 295)
             TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                 Size = UDim2.new(0, 850, 0, 550),
-                Position = UDim2.new(0.5, -425, 0.5, -275)
+                Position = UDim2.new(0.5, -425, 0, 20)
             }):Play()
         end
     end
@@ -1276,7 +1297,7 @@ end)
 
 local Watermark = Instance.new("Frame")
 Watermark.Size = UDim2.new(0, 200, 0, 42)
-Watermark.Position = UDim2.new(0, 12, 0, 12)
+Watermark.Position = UDim2.new(0.5, -100, 1, -54)
 Watermark.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
 Watermark.BorderSizePixel = 0
 Watermark.Parent = ScreenGui
@@ -1290,11 +1311,18 @@ WaterStroke.Color = Color3.fromRGB(139, 0, 0)
 WaterStroke.Thickness = 1.5
 WaterStroke.Parent = Watermark
 
+local WaterButton = Instance.new("TextButton")
+WaterButton.Size = UDim2.new(1, 0, 1, 0)
+WaterButton.BackgroundTransparency = 1
+WaterButton.Text = ""
+WaterButton.ZIndex = 10
+WaterButton.Parent = Watermark
+
 local WaterTitle = Instance.new("TextLabel")
 WaterTitle.Size = UDim2.new(1, -16, 0, 18)
 WaterTitle.Position = UDim2.new(0, 8, 0, 6)
 WaterTitle.BackgroundTransparency = 1
-WaterTitle.Text = "BLOODYBLOX 0.3.0"
+WaterTitle.Text = "BLOODYBLOX 0.3.1"
 WaterTitle.TextColor3 = Color3.fromRGB(139, 0, 0)
 WaterTitle.TextSize = 12
 WaterTitle.Font = Enum.Font.GothamBold
@@ -1305,12 +1333,41 @@ local WaterSub = Instance.new("TextLabel")
 WaterSub.Size = UDim2.new(1, -16, 0, 14)
 WaterSub.Position = UDim2.new(0, 8, 0, 22)
 WaterSub.BackgroundTransparency = 1
-WaterSub.Text = "FPS: 60"
+WaterSub.Text = "FPS: 60 | Click to toggle"
 WaterSub.TextColor3 = Color3.fromRGB(120, 120, 130)
 WaterSub.TextSize = 10
 WaterSub.Font = Enum.Font.Gotham
 WaterSub.TextXAlignment = Enum.TextXAlignment.Left
 WaterSub.Parent = Watermark
+
+WaterButton.MouseButton1Click:Connect(function()
+    if Main.Visible then
+        TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 0, 0, 0),
+            Position = UDim2.new(0.5, 0, 0, 295)
+        }):Play()
+        task.wait(0.25)
+        Main.Visible = false
+        Main.Size = UDim2.new(0, 850, 0, 550)
+        Main.Position = UDim2.new(0.5, -425, 0, 20)
+    else
+        Main.Visible = true
+        Main.Size = UDim2.new(0, 0, 0, 0)
+        Main.Position = UDim2.new(0.5, 0, 0, 295)
+        TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, 850, 0, 550),
+            Position = UDim2.new(0.5, -425, 0, 20)
+        }):Play()
+    end
+end)
+
+WaterButton.MouseEnter:Connect(function()
+    TweenService:Create(WaterStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(160, 0, 0)}):Play()
+end)
+
+WaterButton.MouseLeave:Connect(function()
+    TweenService:Create(WaterStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(139, 0, 0)}):Play()
+end)
 
 task.spawn(function()
     local lastUpdate = tick()
@@ -1319,7 +1376,7 @@ task.spawn(function()
         frames = frames + 1
         if tick() - lastUpdate >= 0.5 then
             local fps = math.floor(frames / (tick() - lastUpdate))
-            WaterSub.Text = string.format("FPS: %d", fps)
+            WaterSub.Text = string.format("FPS: %d | Click to toggle", fps)
             frames = 0
             lastUpdate = tick()
         end
