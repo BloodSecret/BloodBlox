@@ -28,8 +28,8 @@ ScreenGui.Parent = game:GetService("CoreGui")
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 850, 0, 550)
-Main.Position = UDim2.new(0.5, -425, 0, 20)
+Main.Size = UDim2.new(0, 595, 0, 385)
+Main.Position = UDim2.new(0.5, -297.5, 0, 20)
 Main.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
@@ -800,12 +800,32 @@ ClearButton.MouseButton1Click:Connect(function()
 end)
 
 local Config = {
+    MenuSize = 0.7,
     Farm = {AutoFarm = false},
     Rebirth = {AutoRebirth = false, NoRemoveTP = false, FastRebirth = false},
     Combat = {AntiAim = false, AutoKill = false},
     Player = {Fly = false, NoClip = false, Speed = 16},
     Misc = {NoWeightSound = false}
 }
+
+local function GetMenuSize()
+    local baseWidth = 850
+    local baseHeight = 550
+    return baseWidth * Config.MenuSize, baseHeight * Config.MenuSize
+end
+
+local function UpdateMenuSize()
+    local width, height = GetMenuSize()
+    if Main.Visible then
+        TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(0, width, 0, height),
+            Position = UDim2.new(0.5, -width/2, 0, 20)
+        }):Play()
+    else
+        Main.Size = UDim2.new(0, width, 0, height)
+        Main.Position = UDim2.new(0.5, -width/2, 0, 20)
+    end
+end
 
 local Connections = {}
 
@@ -1206,6 +1226,11 @@ local watermarkPositions = {
 }
 local currentWatermarkPos = 3
 
+AddSlider(SettingTab, "Menu Size", 50, 100, 70, function(value)
+    Config.MenuSize = value / 100
+    UpdateMenuSize()
+end)
+
 AddButton(SettingTab, "Move Watermark", function()
     currentWatermarkPos = currentWatermarkPos + 1
     if currentWatermarkPos > #watermarkPositions then
@@ -1228,14 +1253,15 @@ AddButton(SettingTab, "EXIT", function()
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()
+    local width, height = GetMenuSize()
     TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
         Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(0.5, 0, 0, 295)
+        Position = UDim2.new(0.5, 0, 0, height/2 + 20)
     }):Play()
     task.wait(0.25)
     Main.Visible = false
-    Main.Size = UDim2.new(0, 850, 0, 550)
-    Main.Position = UDim2.new(0.5, -425, 0, 20)
+    Main.Size = UDim2.new(0, width, 0, height)
+    Main.Position = UDim2.new(0.5, -width/2, 0, 20)
 end)
 
 local dragging, dragInput, dragStart, startPos
@@ -1274,22 +1300,23 @@ end)
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.Insert then
+        local width, height = GetMenuSize()
         if Main.Visible then
             TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
                 Size = UDim2.new(0, 0, 0, 0),
-                Position = UDim2.new(0.5, 0, 0, 295)
+                Position = UDim2.new(0.5, 0, 0, height/2 + 20)
             }):Play()
             task.wait(0.25)
             Main.Visible = false
-            Main.Size = UDim2.new(0, 850, 0, 550)
-            Main.Position = UDim2.new(0.5, -425, 0, 20)
+            Main.Size = UDim2.new(0, width, 0, height)
+            Main.Position = UDim2.new(0.5, -width/2, 0, 20)
         else
             Main.Visible = true
             Main.Size = UDim2.new(0, 0, 0, 0)
-            Main.Position = UDim2.new(0.5, 0, 0, 295)
+            Main.Position = UDim2.new(0.5, 0, 0, height/2 + 20)
             TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, 850, 0, 550),
-                Position = UDim2.new(0.5, -425, 0, 20)
+                Size = UDim2.new(0, width, 0, height),
+                Position = UDim2.new(0.5, -width/2, 0, 20)
             }):Play()
         end
     end
@@ -1341,22 +1368,23 @@ WaterSub.TextXAlignment = Enum.TextXAlignment.Left
 WaterSub.Parent = Watermark
 
 WaterButton.MouseButton1Click:Connect(function()
+    local width, height = GetMenuSize()
     if Main.Visible then
         TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
             Size = UDim2.new(0, 0, 0, 0),
-            Position = UDim2.new(0.5, 0, 0, 295)
+            Position = UDim2.new(0.5, 0, 0, height/2 + 20)
         }):Play()
         task.wait(0.25)
         Main.Visible = false
-        Main.Size = UDim2.new(0, 850, 0, 550)
-        Main.Position = UDim2.new(0.5, -425, 0, 20)
+        Main.Size = UDim2.new(0, width, 0, height)
+        Main.Position = UDim2.new(0.5, -width/2, 0, 20)
     else
         Main.Visible = true
         Main.Size = UDim2.new(0, 0, 0, 0)
-        Main.Position = UDim2.new(0.5, 0, 0, 295)
+        Main.Position = UDim2.new(0.5, 0, 0, height/2 + 20)
         TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size = UDim2.new(0, 850, 0, 550),
-            Position = UDim2.new(0.5, -425, 0, 20)
+            Size = UDim2.new(0, width, 0, height),
+            Position = UDim2.new(0.5, -width/2, 0, 20)
         }):Play()
     end
 end)
