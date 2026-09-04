@@ -29,8 +29,9 @@ ScreenGui.Parent = game:GetService("CoreGui")
 local Main = Instance.new("Frame")
 Main.Name = "Main"
 Main.Size = UDim2.new(0, 850, 0, 550)
-Main.Position = UDim2.new(0.5, -425, 0.5, -180)
+Main.Position = UDim2.new(0.5, -425, 0.5, -275)
 Main.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+Main.BackgroundTransparency = 0.30
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
 Main.Parent = ScreenGui
@@ -42,11 +43,19 @@ MobileScale.Parent = Main
 local Background = Instance.new("ImageLabel")
 Background.Size = UDim2.new(1, 0, 1, 0)
 Background.BackgroundTransparency = 1
-Background.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-Background.ImageTransparency = 0.92
+Background.ImageTransparency = 0.4
 Background.ScaleType = Enum.ScaleType.Crop
 Background.ZIndex = 0
 Background.Parent = Main
+
+task.spawn(function()
+    pcall(function()
+        if getcustomasset then
+            local imagePath = "C:\\Roblox\\Muscle legends\\Фон\\Фон.png"
+            Background.Image = getcustomasset(imagePath)
+        end
+    end)
+end)
 
 local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 6)
@@ -74,6 +83,7 @@ local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
 TopBar.Size = UDim2.new(1, 0, 0, 45)
 TopBar.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+TopBar.BackgroundTransparency = 0.30
 TopBar.BorderSizePixel = 0
 TopBar.ZIndex = 1
 TopBar.Parent = Main
@@ -86,6 +96,7 @@ local TopBarFix = Instance.new("Frame")
 TopBarFix.Size = UDim2.new(1, 0, 0, 6)
 TopBarFix.Position = UDim2.new(0, 0, 1, -6)
 TopBarFix.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+TopBarFix.BackgroundTransparency = 0.30
 TopBarFix.BorderSizePixel = 0
 TopBarFix.ZIndex = 1
 TopBarFix.Parent = TopBar
@@ -674,11 +685,11 @@ local Config = {
     MenuSize = 1.0,
     Farm = {AutoFarm = false},
     Rebirth = {AutoRebirth = false, NoRemoveTP = false, FastRebirth = false},
-    Combat = {AntiAim = false, AutoKill = false},
+    Combat = {AntiAim = false, AutoKill = false, AutoKillWhiteList = {}},
     Player = {Fly = false, NoClip = false, Speed = 16, AntiAFK = true},
     Misc = {NoWeightSound = false},
     Teleport = {Locations = {}},
-    UI = {ShowWatermark = true}
+    UI = {ShowWatermark = true, WatermarkDraggable = true}
 }
 
 local function GetMenuSize()
@@ -798,31 +809,224 @@ AddToggle(CombatTab, "Anti Aim", false, function(v)
     end
 end)
 
+local function getAutoKillTargets()
+    local targets = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local isWhitelisted = false
+                for _, name in pairs(Config.Combat.AutoKillWhiteList) do
+                    if player.Name == name then
+                        isWhitelisted = true
+                        break
+                    end
+                end
+                if not isWhitelisted then
+                    table.insert(targets, player)
+                end
+            end
+        end
+    end
+    return targets
+end
+
+local function equipFists()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+        for _, tool in pairs(char:GetChildren()) do
+            if tool:IsA("Tool") then
+                humanoid:UnequipTools()
+                task.wait(0.05)
+                break
+            end
+        end
+    end)
+end
+
 AddToggle(CombatTab, "Auto Kill", false, function(v)
     Config.Combat.AutoKill = v
     if v then
-        Connections.AutoKill = RunService.Heartbeat:Connect(function()
-            pcall(function()
-                if not Config.Combat.AutoKill then return end
+        Connections.AutoKill = task.spawn(function()
+            while Config.Combat.AutoKill do
+                pcall(function()
+                    local targets = getAutoKillTargets()
+                    if #targets == 0 then
+                        task.wait(1)
+                        return
+                    end
 
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
-                        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                            if remote:IsA("RemoteEvent") and (remote.Name:lower():find("damage") or remote.Name:lower():find("hit")) then
-                                remote:FireServer(player.Character.Humanoid, 999)
+                    for _, target in pairs(targets) do
+                        if not Config.Combat.AutoKill then break end
+
+                        local char = LocalPlayer.Character
+                        local targetChar = target.Character
+
+                        if char and targetChar and char:FindFirstChild("HumanoidRootPart") and targetChar:FindFirstChild("HumanoidRootPart") then
+                            local targetHRP = targetChar.HumanoidRootPart
+                            local targetHum = targetChar:FindFirstChild("Humanoid")
+
+                            if targetHum and targetHum.Health > 0 then
+                                equipFists()
+                                task.wait(0.1)
+
+                                local behindPos = targetHRP.CFrame * CFrame.new(0, 0, 3)
+                                char.HumanoidRootPart.CFrame = behindPos
+                                task.wait(0.15)
+
+                                local muscleEvent = LocalPlayer:FindFirstChild("muscleEvent")
+                                if muscleEvent then
+                                    muscleEvent:FireServer("punch", "leftHand")
+                                    task.wait(0.2)
+                                    muscleEvent:FireServer("punch", "rightHand")
+                                    task.wait(0.3)
+                                end
                             end
                         end
                     end
-                end
-            end)
+                end)
+                task.wait(0.5)
+            end
         end)
+        print("[AutoKill] Enabled")
     else
         if Connections.AutoKill then
-            Connections.AutoKill:Disconnect()
             Connections.AutoKill = nil
         end
+        print("[AutoKill] Disabled")
     end
 end)
+
+local WLFrame = Instance.new("Frame")
+WLFrame.Size = UDim2.new(1, 0, 0, 150)
+WLFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+WLFrame.BorderSizePixel = 0
+WLFrame.Parent = CombatTab
+
+local WLCorner = Instance.new("UICorner")
+WLCorner.CornerRadius = UDim.new(0, 4)
+WLCorner.Parent = WLFrame
+
+local WLTitle = Instance.new("TextLabel")
+WLTitle.Size = UDim2.new(1, -16, 0, 24)
+WLTitle.Position = UDim2.new(0, 8, 0, 4)
+WLTitle.BackgroundTransparency = 1
+WLTitle.Text = "Auto Kill WhiteList"
+WLTitle.TextColor3 = Color3.fromRGB(200, 200, 210)
+WLTitle.TextSize = 12
+WLTitle.Font = Enum.Font.GothamBold
+WLTitle.TextXAlignment = Enum.TextXAlignment.Left
+WLTitle.Parent = WLFrame
+
+local WLScroll = Instance.new("ScrollingFrame")
+WLScroll.Size = UDim2.new(1, -16, 1, -64)
+WLScroll.Position = UDim2.new(0, 8, 0, 32)
+WLScroll.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+WLScroll.BorderSizePixel = 0
+WLScroll.ScrollBarThickness = 4
+WLScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+WLScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+WLScroll.Parent = WLFrame
+
+local WLScrollCorner = Instance.new("UICorner")
+WLScrollCorner.CornerRadius = UDim.new(0, 4)
+WLScrollCorner.Parent = WLScroll
+
+local WLList = Instance.new("UIListLayout")
+WLList.Padding = UDim.new(0, 4)
+WLList.SortOrder = Enum.SortOrder.LayoutOrder
+WLList.Parent = WLScroll
+
+local function updateAutoKillWhiteList()
+    for _, child in pairs(WLScroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+
+    for idx, playerName in pairs(Config.Combat.AutoKillWhiteList) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -8, 0, 28)
+        btn.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+        btn.BorderSizePixel = 0
+        btn.Text = playerName .. " [Remove]"
+        btn.TextColor3 = Color3.fromRGB(200, 200, 210)
+        btn.TextSize = 11
+        btn.Font = Enum.Font.Gotham
+        btn.Parent = WLScroll
+
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 4)
+        btnCorner.Parent = btn
+
+        btn.MouseButton1Click:Connect(function()
+            table.remove(Config.Combat.AutoKillWhiteList, idx)
+            updateAutoKillWhiteList()
+            print("[AutoKill] Removed: " .. playerName)
+        end)
+
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(139, 0, 0)}):Play()
+        end)
+
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(18, 18, 22)}):Play()
+        end)
+    end
+end
+
+local WLAddBtn = Instance.new("TextButton")
+WLAddBtn.Size = UDim2.new(1, -16, 0, 28)
+WLAddBtn.Position = UDim2.new(0, 8, 1, -32)
+WLAddBtn.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
+WLAddBtn.BorderSizePixel = 0
+WLAddBtn.Text = "Добавить игрока"
+WLAddBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+WLAddBtn.TextSize = 11
+WLAddBtn.Font = Enum.Font.GothamBold
+WLAddBtn.Parent = WLFrame
+
+local WLAddCorner = Instance.new("UICorner")
+WLAddCorner.CornerRadius = UDim.new(0, 4)
+WLAddCorner.Parent = WLAddBtn
+
+WLAddBtn.MouseButton1Click:Connect(function()
+    local availablePlayers = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local alreadyListed = false
+            for _, name in pairs(Config.Combat.AutoKillWhiteList) do
+                if player.Name == name then
+                    alreadyListed = true
+                    break
+                end
+            end
+            if not alreadyListed then
+                table.insert(availablePlayers, player.Name)
+            end
+        end
+    end
+
+    if #availablePlayers > 0 then
+        local selected = availablePlayers[math.random(1, #availablePlayers)]
+        table.insert(Config.Combat.AutoKillWhiteList, selected)
+        updateAutoKillWhiteList()
+        print("[AutoKill] Added: " .. selected)
+    end
+end)
+
+WLAddBtn.MouseEnter:Connect(function()
+    TweenService:Create(WLAddBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(160, 0, 0)}):Play()
+end)
+
+WLAddBtn.MouseLeave:Connect(function()
+    TweenService:Create(WLAddBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(139, 0, 0)}):Play()
+end)
+
+updateAutoKillWhiteList()
 
 local PlayerButtonsContainer = Instance.new("ScrollingFrame")
 PlayerButtonsContainer.Size = UDim2.new(1, -8, 0, 200)
@@ -1200,22 +1404,228 @@ AddToggle(MiscTab, "Skip Egg Animation", false, function(v)
     end
 end)
 
+AddButton(AnalyzerTab, "Analyze ReplicatedStorage", function()
+    print("═══════════════════════════════════════")
+    print("  REPLICATED STORAGE ANALYSIS")
+    print("═══════════════════════════════════════")
+
+    local function scanFolder(folder, depth)
+        depth = depth or 0
+        local indent = string.rep("  ", depth)
+
+        for _, child in pairs(folder:GetChildren()) do
+            local childType = child.ClassName
+            print(indent .. "├─ " .. child.Name .. " (" .. childType .. ")")
+
+            if child:IsA("Folder") or child:IsA("Configuration") then
+                scanFolder(child, depth + 1)
+            end
+        end
+    end
+
+    scanFolder(ReplicatedStorage, 0)
+    print("═══════════════════════════════════════")
+end)
+
+AddButton(AnalyzerTab, "Find All Remotes", function()
+    print("═══════════════════════════════════════")
+    print("  REMOTE EVENTS & FUNCTIONS")
+    print("═══════════════════════════════════════")
+
+    local remoteCount = 0
+
+    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+        if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
+            remoteCount = remoteCount + 1
+            print(string.format("[%d] %s (%s)", remoteCount, remote:GetFullName(), remote.ClassName))
+        end
+    end
+
+    print("═══════════════════════════════════════")
+    print("Total remotes found: " .. remoteCount)
+end)
+
+AddButton(AnalyzerTab, "Scan Player Character", function()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if not char then
+            print("[Analyzer] Character not found")
+            return
+        end
+
+        print("═══════════════════════════════════════")
+        print("  CHARACTER ANALYSIS")
+        print("═══════════════════════════════════════")
+
+        for _, child in pairs(char:GetChildren()) do
+            print("├─ " .. child.Name .. " (" .. child.ClassName .. ")")
+        end
+
+        print("═══════════════════════════════════════")
+    end)
+end)
+
+AddButton(AnalyzerTab, "Find LocalPlayer Events", function()
+    print("═══════════════════════════════════════")
+    print("  LOCAL PLAYER DESCENDANTS")
+    print("═══════════════════════════════════════")
+
+    for _, desc in pairs(LocalPlayer:GetDescendants()) do
+        if desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction") or desc:IsA("BindableEvent") then
+            print("├─ " .. desc:GetFullName() .. " (" .. desc.ClassName .. ")")
+        end
+    end
+
+    print("═══════════════════════════════════════")
+end)
+
+AddButton(TesterTab, "Test Auto Rebirth Remote", function()
+    pcall(function()
+        local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+        if not rEvents then
+            print("[Tester] rEvents not found")
+            return
+        end
+
+        local rebirthRemote = rEvents:FindFirstChild("rebirthRemote")
+        if not rebirthRemote then
+            print("[Tester] rebirthRemote not found")
+            return
+        end
+
+        print("[Tester] Found rebirthRemote at: " .. rebirthRemote:GetFullName())
+        print("[Tester] Attempting rebirth...")
+
+        local success, result = pcall(function()
+            return rebirthRemote:InvokeServer("rebirthRequest")
+        end)
+
+        if success then
+            if result then
+                print("[Tester] ✓ Rebirth SUCCESS - server returned true")
+            else
+                print("[Tester] ✗ Rebirth FAILED - server returned false (not enough strength?)")
+            end
+        else
+            print("[Tester] ✗ Error calling remote: " .. tostring(result))
+        end
+    end)
+end)
+
+AddButton(TesterTab, "Test Weight Tool", function()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if not char then
+            print("[Tester] Character not found")
+            return
+        end
+
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid then
+            print("[Tester] Humanoid not found")
+            return
+        end
+
+        local weightTool = char:FindFirstChild("Weight") or LocalPlayer.Backpack:FindFirstChild("Weight")
+        if not weightTool then
+            print("[Tester] Weight tool not found in character or backpack")
+            return
+        end
+
+        print("[Tester] Found Weight tool")
+
+        if weightTool.Parent ~= char then
+            humanoid:EquipTool(weightTool)
+            print("[Tester] Equipped Weight tool")
+            task.wait(0.1)
+        end
+
+        weightTool:Activate()
+        print("[Tester] ✓ Weight tool activated")
+    end)
+end)
+
+AddButton(TesterTab, "Test AntiAFK", function()
+    print("[Tester] Testing AntiAFK system...")
+
+    local VirtualUser = game:GetService("VirtualUser")
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+
+    print("[Tester] ✓ AntiAFK input sent")
+end)
+
+AddButton(TesterTab, "Test Location Save/TP", function()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then
+            print("[Tester] Character/HRP not found")
+            return
+        end
+
+        local originalPos = char.HumanoidRootPart.CFrame
+        print("[Tester] Original position: " .. tostring(originalPos.Position))
+
+        local testPos = originalPos * CFrame.new(10, 0, 0)
+        char.HumanoidRootPart.CFrame = testPos
+        print("[Tester] Teleported +10 studs X")
+
+        task.wait(1)
+
+        char.HumanoidRootPart.CFrame = originalPos
+        print("[Tester] ✓ Teleported back to original position")
+    end)
+end)
+
+AddButton(TesterTab, "Clear All Connections", function()
+    local count = 0
+    for name, conn in pairs(Connections) do
+        if conn then
+            conn:Disconnect()
+            count = count + 1
+        end
+    end
+    Connections = {}
+    print("[Tester] ✓ Disconnected " .. count .. " connections")
+end)
+
+AddButton(TesterTab, "Test Menu Resize", function()
+    local originalSize = Config.MenuSize
+    print("[Tester] Original menu size: " .. (originalSize * 100) .. "%")
+
+    Config.MenuSize = 0.5
+    UpdateMenuSize()
+    print("[Tester] Resized to 50%")
+
+    task.wait(1)
+
+    Config.MenuSize = 1.5
+    UpdateMenuSize()
+    print("[Tester] Resized to 150%")
+
+    task.wait(1)
+
+    Config.MenuSize = originalSize
+    UpdateMenuSize()
+    print("[Tester] ✓ Restored to original size")
+end)
+
 local Watermark = Instance.new("Frame")
 Watermark.Name = "Watermark"
-Watermark.Size = UDim2.new(0, 200, 0, 42)
-Watermark.Position = UDim2.new(0.5, -100, 0, 12)
+Watermark.Size = UDim2.new(0, 100, 0, 21)
+Watermark.Position = UDim2.new(0.5, -50, 0, 12)
 Watermark.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
 Watermark.BackgroundTransparency = 0.25
 Watermark.BorderSizePixel = 0
 Watermark.Parent = ScreenGui
 
 local WaterCorner = Instance.new("UICorner")
-WaterCorner.CornerRadius = UDim.new(0, 4)
+WaterCorner.CornerRadius = UDim.new(0, 2)
 WaterCorner.Parent = Watermark
 
 local WaterStroke = Instance.new("UIStroke")
 WaterStroke.Color = Color3.fromRGB(139, 0, 0)
-WaterStroke.Thickness = 1.5
+WaterStroke.Thickness = 1
 WaterStroke.Parent = Watermark
 
 local WaterButton = Instance.new("TextButton")
@@ -1226,10 +1636,26 @@ WaterButton.ZIndex = 10
 WaterButton.Parent = Watermark
 
 local WaterTitle = Instance.new("TextLabel")
-WaterTitle.Size = UDim2.new(1, -16, 0, 18)
-WaterTitle.Position = UDim2.new(0, 8, 0, 6)
+WaterTitle.Size = UDim2.new(1, -8, 0, 9)
+WaterTitle.Position = UDim2.new(0, 4, 0, 3)
 WaterTitle.BackgroundTransparency = 1
 WaterTitle.Text = "BLOODYBLOX 0.4.0 BETA"
+WaterTitle.TextColor3 = Color3.fromRGB(139, 0, 0)
+WaterTitle.TextSize = 6
+WaterTitle.Font = Enum.Font.GothamBold
+WaterTitle.TextXAlignment = Enum.TextXAlignment.Left
+WaterTitle.Parent = Watermark
+
+local WaterSub = Instance.new("TextLabel")
+WaterSub.Size = UDim2.new(1, -8, 0, 7)
+WaterSub.Position = UDim2.new(0, 4, 0, 11)
+WaterSub.BackgroundTransparency = 1
+WaterSub.Text = "FPS: 60 | Click to toggle"
+WaterSub.TextColor3 = Color3.fromRGB(120, 120, 130)
+WaterSub.TextSize = 5
+WaterSub.Font = Enum.Font.Gotham
+WaterSub.TextXAlignment = Enum.TextXAlignment.Left
+WaterSub.Parent = Watermark
 WaterTitle.TextColor3 = Color3.fromRGB(139, 0, 0)
 WaterTitle.TextSize = 12
 WaterTitle.Font = Enum.Font.GothamBold
@@ -1247,25 +1673,50 @@ WaterSub.Font = Enum.Font.Gotham
 WaterSub.TextXAlignment = Enum.TextXAlignment.Left
 WaterSub.Parent = Watermark
 
+local waterDragging, waterDragStart, waterStartPos
+
 WaterButton.MouseButton1Click:Connect(function()
-    local width, height = GetMenuSize()
-    if Main.Visible then
-        local currentPos = Main.Position
-        TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-            Size = UDim2.new(0, 0, 0, 0),
-            Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, currentPos.Y.Scale, currentPos.Y.Offset)
-        }):Play()
-        task.wait(0.25)
-        Main.Visible = false
-        Main.Size = UDim2.new(0, width, 0, height)
-    else
-        Main.Visible = true
-        local savedPos = Main.Position
-        Main.Size = UDim2.new(0, 0, 0, 0)
-        TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size = UDim2.new(0, width, 0, height),
-            Position = savedPos
-        }):Play()
+    if not Config.UI.WatermarkDraggable then
+        local width, height = GetMenuSize()
+        if Main.Visible then
+            local currentPos = Main.Position
+            TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                Size = UDim2.new(0, 0, 0, 0),
+                Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, currentPos.Y.Scale, currentPos.Y.Offset)
+            }):Play()
+            task.wait(0.25)
+            Main.Visible = false
+            Main.Size = UDim2.new(0, width, 0, height)
+        else
+            Main.Visible = true
+            local savedPos = Main.Position
+            Main.Size = UDim2.new(0, 0, 0, 0)
+            TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, width, 0, height),
+                Position = savedPos
+            }):Play()
+        end
+    end
+end)
+
+WaterButton.InputBegan:Connect(function(input)
+    if Config.UI.WatermarkDraggable and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        waterDragging = true
+        waterDragStart = input.Position
+        waterStartPos = Watermark.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                waterDragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if Config.UI.WatermarkDraggable and waterDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - waterDragStart
+        Watermark.Position = UDim2.new(waterStartPos.X.Scale, waterStartPos.X.Offset + delta.X, waterStartPos.Y.Scale, waterStartPos.Y.Offset + delta.Y)
     end
 end)
 
@@ -1291,26 +1742,13 @@ task.spawn(function()
     end)
 end)
 
-local watermarkPositions = {
-    {name = "Top Left", pos = UDim2.new(0, 12, 0, 12)},
-    {name = "Top Center", pos = UDim2.new(0.5, -100, 0, 12)},
-    {name = "Top Right", pos = UDim2.new(1, -212, 0, 12)},
-    {name = "Bottom Center", pos = UDim2.new(0.5, -100, 1, -54)}
-}
-local currentWatermarkPos = 2
-
-AddButton(SettingTab, "Move Watermark", function()
-    currentWatermarkPos = currentWatermarkPos + 1
-    if currentWatermarkPos > #watermarkPositions then
-        currentWatermarkPos = 1
+AddToggle(SettingTab, "Watermark Draggable", true, function(v)
+    Config.UI.WatermarkDraggable = v
+    if v then
+        print("[Settings] Watermark dragging enabled")
+    else
+        print("[Settings] Watermark dragging disabled")
     end
-
-    local newPos = watermarkPositions[currentWatermarkPos]
-    TweenService:Create(Watermark, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-        Position = newPos.pos
-    }):Play()
-
-    print("[BloodyBlox] Watermark moved to: " .. newPos.name)
 end)
 
 AddButton(SettingTab, "EXIT", function()
@@ -1343,26 +1781,6 @@ local function update(input)
     local delta = input.Position - dragStart
     Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 end
-
-Main.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = Main.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-Main.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
 
 TopBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
