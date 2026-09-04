@@ -30,7 +30,7 @@ ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 local Main = Instance.new("Frame")
 Main.Name = "Main"
 Main.Size = UDim2.new(0, 850, 0, 550)
-Main.Position = UDim2.new(0.5, -425, 0.5, -275)
+Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 Main.AnchorPoint = Vector2.new(0.5, 0.5)
 Main.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
 Main.BackgroundTransparency = 0.30
@@ -1678,26 +1678,24 @@ WaterSub.Parent = Watermark
 local waterDragging, waterDragStart, waterStartPos
 
 WaterButton.MouseButton1Click:Connect(function()
-    if not Config.UI.WatermarkDraggable then
-        local width, height = GetMenuSize()
-        if Main.Visible then
-            local currentPos = Main.Position
-            TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-                Size = UDim2.new(0, 0, 0, 0),
-                Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, currentPos.Y.Scale, currentPos.Y.Offset)
-            }):Play()
-            task.wait(0.25)
-            Main.Visible = false
-            Main.Size = UDim2.new(0, width, 0, height)
-        else
-            Main.Visible = true
-            local savedPos = Main.Position
-            Main.Size = UDim2.new(0, 0, 0, 0)
-            TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, width, 0, height),
-                Position = savedPos
-            }):Play()
-        end
+    local width, height = GetMenuSize()
+    if Main.Visible then
+        local currentPos = Main.Position
+        TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 0, 0, 0),
+            Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, currentPos.Y.Scale, currentPos.Y.Offset)
+        }):Play()
+        task.wait(0.25)
+        Main.Visible = false
+        Main.Size = UDim2.new(0, width, 0, height)
+    else
+        Main.Visible = true
+        local savedPos = Main.Position
+        Main.Size = UDim2.new(0, 0, 0, 0)
+        TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, width, 0, height),
+            Position = savedPos
+        }):Play()
     end
 end)
 
@@ -1784,8 +1782,28 @@ local function update(input)
     Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 end
 
+Main.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Main.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+Main.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
 TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = Main.Position
@@ -1799,7 +1817,7 @@ TopBar.InputBegan:Connect(function(input)
 end)
 
 TopBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
 end)
