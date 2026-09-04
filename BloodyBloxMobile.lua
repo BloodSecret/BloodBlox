@@ -1765,10 +1765,8 @@ end)
 
 CloseBtn.MouseButton1Click:Connect(function()
     local width, height = GetMenuSize()
-    local currentPos = Main.Position
     TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-        Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, currentPos.Y.Scale, currentPos.Y.Offset)
+        Size = UDim2.new(0, 0, 0, 0)
     }):Play()
     task.wait(0.25)
     Main.Visible = false
@@ -1813,21 +1811,17 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == Enum.KeyCode.Insert then
         local width, height = GetMenuSize()
         if Main.Visible then
-            local currentPos = Main.Position
             TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-                Size = UDim2.new(0, 0, 0, 0),
-                Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, currentPos.Y.Scale, currentPos.Y.Offset)
+                Size = UDim2.new(0, 0, 0, 0)
             }):Play()
             task.wait(0.25)
             Main.Visible = false
             Main.Size = UDim2.new(0, width, 0, height)
         else
             Main.Visible = true
-            local savedPos = Main.Position
             Main.Size = UDim2.new(0, 0, 0, 0)
             TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, width, 0, height),
-                Position = savedPos
+                Size = UDim2.new(0, width, 0, height)
             }):Play()
         end
     end
@@ -1837,10 +1831,8 @@ Main.Size = UDim2.new(0, 0, 0, 0)
 Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 task.wait(0.1)
 local width, height = GetMenuSize()
-TweenService:Create(Main, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size = UDim2.new(0, width, 0, height),
-    Position = UDim2.new(0.5, 0, 0.5, 0)
-}):Play()
+Main.Size = UDim2.new(0, width, 0, height)
+Main.Visible = true
 
 print("✓ BloodyBlox Fixed Edition loaded!")
 print("✓ Press INSERT to toggle")
