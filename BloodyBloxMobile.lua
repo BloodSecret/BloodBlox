@@ -40,6 +40,7 @@ Main.Parent = ScreenGui
 
 local MobileScale = Instance.new("UIScale")
 MobileScale.Scale = 0.33
+MobileScale.Name = "MobileScale"
 MobileScale.Parent = Main
 
 local Background = Instance.new("ImageLabel")
@@ -695,21 +696,17 @@ local Config = {
 }
 
 local function GetMenuSize()
-    local baseWidth = 850
-    local baseHeight = 550
-    return baseWidth * Config.MenuSize, baseHeight * Config.MenuSize
+    local baseScale = 0.33
+    return baseScale * Config.MenuSize
 end
 
 local function UpdateMenuSize()
-    local width, height = GetMenuSize()
-    if Main.Visible then
-        TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, width, 0, height),
-            Position = UDim2.new(0.5, -width/2, 0, 20)
+    local scale = GetMenuSize()
+    local mobileScale = Main:FindFirstChild("MobileScale")
+    if mobileScale then
+        TweenService:Create(mobileScale, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+            Scale = scale
         }):Play()
-    else
-        Main.Size = UDim2.new(0, width, 0, height)
-        Main.Position = UDim2.new(0.5, -width/2, 0, 20)
     end
 end
 
@@ -833,22 +830,6 @@ local function getAutoKillTargets()
     return targets
 end
 
-local function equipFists()
-    pcall(function()
-        local char = LocalPlayer.Character
-        if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
-        for _, tool in pairs(char:GetChildren()) do
-            if tool:IsA("Tool") then
-                humanoid:UnequipTools()
-                task.wait(0.05)
-                break
-            end
-        end
-    end)
-end
-
 AddToggle(CombatTab, "Auto Kill", false, function(v)
     Config.Combat.AutoKill = v
     if v then
@@ -872,28 +853,25 @@ AddToggle(CombatTab, "Auto Kill", false, function(v)
                             local targetHum = targetChar:FindFirstChild("Humanoid")
 
                             if targetHum and targetHum.Health > 0 then
-                                equipFists()
-                                task.wait(0.1)
-
                                 local behindPos = targetHRP.CFrame * CFrame.new(0, 0, 3)
                                 char.HumanoidRootPart.CFrame = behindPos
-                                task.wait(0.15)
+                                task.wait(0.3)
 
                                 local muscleEvent = LocalPlayer:FindFirstChild("muscleEvent")
                                 if muscleEvent then
                                     muscleEvent:FireServer("punch", "leftHand")
-                                    task.wait(0.2)
+                                    task.wait(0.15)
                                     muscleEvent:FireServer("punch", "rightHand")
-                                    task.wait(0.3)
+                                    task.wait(0.2)
                                 end
                             end
                         end
                     end
                 end)
-                task.wait(0.5)
+                task.wait(0.3)
             end
         end)
-        print("[AutoKill] Enabled")
+        print("[AutoKill] Enabled - ВАЖНО: Возьмите кулаки в руки ВРУЧНУЮ перед использованием!")
     else
         if Connections.AutoKill then
             Connections.AutoKill = nil
@@ -1764,13 +1742,12 @@ AddSlider(SettingTab, "Menu Size", 50, 150, 100, function(value)
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()
-    local width, height = GetMenuSize()
     TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
         Size = UDim2.new(0, 0, 0, 0)
     }):Play()
     task.wait(0.25)
     Main.Visible = false
-    Main.Size = UDim2.new(0, width, 0, height)
+    Main.Size = UDim2.new(0, 850, 0, 550)
 end)
 
 local dragging, dragInput, dragStart, startPos
@@ -1809,29 +1786,25 @@ end)
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.Insert then
-        local width, height = GetMenuSize()
         if Main.Visible then
             TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
                 Size = UDim2.new(0, 0, 0, 0)
             }):Play()
             task.wait(0.25)
             Main.Visible = false
-            Main.Size = UDim2.new(0, width, 0, height)
+            Main.Size = UDim2.new(0, 850, 0, 550)
         else
             Main.Visible = true
             Main.Size = UDim2.new(0, 0, 0, 0)
             TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, width, 0, height)
+                Size = UDim2.new(0, 850, 0, 550)
             }):Play()
         end
     end
 end)
 
-Main.Size = UDim2.new(0, 0, 0, 0)
+Main.Size = UDim2.new(0, 850, 0, 550)
 Main.Position = UDim2.new(0.5, 0, 0.5, 0)
-task.wait(0.1)
-local width, height = GetMenuSize()
-Main.Size = UDim2.new(0, width, 0, height)
 Main.Visible = true
 
 print("✓ BloodyBlox Fixed Edition loaded!")
