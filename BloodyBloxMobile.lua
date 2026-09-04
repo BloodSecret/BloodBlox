@@ -28,8 +28,8 @@ ScreenGui.Parent = game:GetService("CoreGui")
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 850, 0, 550)
-Main.Position = UDim2.new(0.5, -425, 0, 20)
+Main.Size = UDim2.new(0, 170, 0, 110)
+Main.Position = UDim2.new(0.5, -85, 0, 20)
 Main.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
@@ -678,8 +678,8 @@ local Config = {
 }
 
 local function GetMenuSize()
-    local baseWidth = 850
-    local baseHeight = 550
+    local baseWidth = 170
+    local baseHeight = 110
     return baseWidth * Config.MenuSize, baseHeight * Config.MenuSize
 end
 
