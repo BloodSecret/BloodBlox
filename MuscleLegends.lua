@@ -1,7 +1,9 @@
 repeat task.wait() until game:IsLoaded()
 
-if game:GetService("CoreGui"):FindFirstChild("BloodyBloxUI") then
-    game:GetService("CoreGui").BloodyBloxUI:Destroy()
+local GuiParent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+
+if GuiParent:FindFirstChild("BloodyBloxUI") then
+    GuiParent.BloodyBloxUI:Destroy()
     task.wait(0.5)
 end
 
@@ -24,7 +26,7 @@ ScreenGui.Name = "BloodyBloxUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent = game:GetService("CoreGui")
+ScreenGui.Parent = GuiParent
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
